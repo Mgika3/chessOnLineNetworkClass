@@ -41,6 +41,8 @@ public class JeuEchec extends JPanel {
     private final PanneauPlateau panneauPlateau = new PanneauPlateau();
     private final long debutPartie = System.currentTimeMillis();
     private final Timer timer;
+    private final Timer timerAnimation;
+    private final List<DeplacementAnime> deplacementsAnimes = new ArrayList<>();
     private final Map<String, Integer> repetitions = new HashMap<>();
     private final GameConnection connexion;
     private final Piece.Couleur couleurLocale;
@@ -80,6 +82,8 @@ public class JeuEchec extends JPanel {
         actualiserStatut();
         timer = new Timer(1000, event -> actualiserHorloge());
         timer.start();
+        timerAnimation = new Timer(16, event -> actualiserAnimations());
+        timerAnimation.setCoalesce(true);
         if (connexion != null) {
             connexion.definirEcouteurCoups(coup -> SwingUtilities.invokeLater(
                     () -> appliquerCoupDistant(coup)));
@@ -88,6 +92,7 @@ public class JeuEchec extends JPanel {
 
     public void arreterHorloge() {
         timer.stop();
+        timerAnimation.stop();
     }
 
     private void initialiserPlateau() {
@@ -107,6 +112,16 @@ public class JeuEchec extends JPanel {
         long secondes = (System.currentTimeMillis() - debutPartie) / 1000;
         horloge.setText(String.format("Temps : %02d:%02d:%02d", secondes / 3600,
                 (secondes / 60) % 60, secondes % 60));
+    }
+
+    private void actualiserAnimations() {
+        long maintenant = System.nanoTime();
+        deplacementsAnimes.removeIf(deplacement ->
+                maintenant - deplacement.debut >= deplacement.duree);
+        panneauPlateau.repaint();
+        if (deplacementsAnimes.isEmpty()) {
+            timerAnimation.stop();
+        }
     }
 
     private void actualiserStatut() {
@@ -436,6 +451,7 @@ public class JeuEchec extends JPanel {
                 return;
             }
         }
+        demarrerAnimation(coup);
         appliquerCoup(plateau, coup);
         ligneEnPassant = -1;
         colonneEnPassant = -1;
@@ -455,6 +471,24 @@ public class JeuEchec extends JPanel {
         verifierFinPartie();
         actualiserStatut();
         panneauPlateau.repaint();
+    }
+
+    private void demarrerAnimation(Coup coup) {
+        Piece piece = plateau[coup.ligneDepart][coup.colonneDepart];
+        long debut = System.nanoTime();
+        int distance = Math.max(Math.abs(coup.ligneArrivee - coup.ligneDepart),
+                Math.abs(coup.colonneArrivee - coup.colonneDepart));
+        long duree = (220L + Math.max(0, distance - 1) * 35L) * 1_000_000L;
+        deplacementsAnimes.add(new DeplacementAnime(piece, coup.ligneDepart, coup.colonneDepart,
+                coup.ligneArrivee, coup.colonneArrivee, debut, duree));
+        if (coup.roque) {
+            int colonneTourDepart = coup.colonneArrivee == 6 ? 7 : 0;
+            int colonneTourArrivee = coup.colonneArrivee == 6 ? 5 : 3;
+            deplacementsAnimes.add(new DeplacementAnime(
+                    plateau[coup.ligneDepart][colonneTourDepart], coup.ligneDepart,
+                    colonneTourDepart, coup.ligneDepart, colonneTourArrivee, debut, duree));
+        }
+        timerAnimation.start();
     }
 
     private void appliquerCoupDistant(String message) {
@@ -574,7 +608,7 @@ public class JeuEchec extends JPanel {
     }
 
     private void gererClic(int x, int y) {
-        if (partieTerminee) {
+        if (partieTerminee || !deplacementsAnimes.isEmpty()) {
             return;
         }
         if (connexion != null && joueur != couleurLocale) {
@@ -729,51 +763,71 @@ public class JeuEchec extends JPanel {
             for (int ligne = 0; ligne < TAILLE; ligne++) {
                 for (int colonne = 0; colonne < TAILLE; colonne++) {
                     Piece piece = plateau[ligne][colonne];
-                    if (piece == null) {
+                    if (piece == null || estAnimee(piece)) {
                         continue;
                     }
-                    g.setFont(new Font(Font.SERIF, Font.PLAIN, (int) (tailleCase * 0.82)));
-                    g.setColor(piece.getCouleur() == Piece.Couleur.BLANC
-                            ? (modeNoel ? new Color(174, 42, 55) : new Color(250, 250, 245))
-                            : (modeNoel ? new Color(0, 163, 108) : new Color(28, 30, 35)));
-                    String symbole = piece.symbole();
                     int xCase = xDepart + colonneAffichee(colonne) * tailleCase;
                     int yCase = yDepart + ligneAffichee(ligne) * tailleCase;
-                    int largeur = g.getFontMetrics().stringWidth(symbole);
-                    int hauteur = g.getFontMetrics().getAscent();
-                    int x = xCase + (tailleCase - largeur) / 2;
-                    int y = yCase + hauteur - tailleCase / 10;
-                    g.drawString(symbole, x, y);
-                    if (modeNoel) {
-                        switch (piece.getType()) {
-                            case ROI:
-                                dessinerBonnet(g, xCase + tailleCase * 0.29,
-                                        yCase + tailleCase * 0.08, tailleCase * 0.42, tailleCase * 0.27);
-                                break;
-                            case DAME:
-                                dessinerHoux(g, xCase + tailleCase * 0.66,
-                                        yCase + tailleCase * 0.08, tailleCase * 0.22);
-                                break;
-                            case TOUR:
-                                dessinerGuirlande(g, xCase, yCase, tailleCase);
-                                break;
-                            case FOU:
-                                dessinerMitra(g, xCase, yCase, tailleCase);
-                                break;
-                            case CAVALIER:
-                                dessinerEcharpe(g, xCase, yCase, tailleCase);
-                                break;
-                            case PION:
-                                dessinerFlocon(g, xCase + tailleCase * 0.67,
-                                        yCase + tailleCase * 0.63, tailleCase * 0.085);
-                                break;
-                            default:
-                                throw new IllegalStateException("Type de pièce inconnu.");
-                        }
-                    }
+                    dessinerPiece(g, piece, xCase, yCase, tailleCase);
                 }
             }
+            long maintenant = System.nanoTime();
+            for (DeplacementAnime deplacement : deplacementsAnimes) {
+                double progression = deplacement.progression(maintenant);
+                double adoucie = progression * progression * (3 - 2 * progression);
+                double departX = xDepart + colonneAffichee(deplacement.colonneDepart) * tailleCase;
+                double departY = yDepart + ligneAffichee(deplacement.ligneDepart) * tailleCase;
+                double arriveeX = xDepart + colonneAffichee(deplacement.colonneArrivee) * tailleCase;
+                double arriveeY = yDepart + ligneAffichee(deplacement.ligneArrivee) * tailleCase;
+                dessinerPiece(g, deplacement.piece,
+                        (int) Math.round(departX + (arriveeX - departX) * adoucie),
+                        (int) Math.round(departY + (arriveeY - departY) * adoucie), tailleCase);
+            }
             g.dispose();
+        }
+    }
+
+    private boolean estAnimee(Piece piece) {
+        return deplacementsAnimes.stream().anyMatch(deplacement -> deplacement.piece == piece);
+    }
+
+    private void dessinerPiece(Graphics2D graphics, Piece piece, int xCase, int yCase, int tailleCase) {
+        graphics.setFont(new Font(Font.SERIF, Font.PLAIN, (int) (tailleCase * 0.82)));
+        graphics.setColor(piece.getCouleur() == Piece.Couleur.BLANC
+                ? (modeNoel ? new Color(174, 42, 55) : new Color(250, 250, 245))
+                : (modeNoel ? new Color(0, 163, 108) : new Color(28, 30, 35)));
+        String symbole = piece.symbole();
+        int largeur = graphics.getFontMetrics().stringWidth(symbole);
+        int hauteur = graphics.getFontMetrics().getAscent();
+        int x = xCase + (tailleCase - largeur) / 2;
+        int y = yCase + hauteur - tailleCase / 10;
+        graphics.drawString(symbole, x, y);
+        if (modeNoel) {
+            switch (piece.getType()) {
+                case ROI:
+                    dessinerBonnet(graphics, xCase + tailleCase * 0.29,
+                            yCase + tailleCase * 0.08, tailleCase * 0.42, tailleCase * 0.27);
+                    break;
+                case DAME:
+                    dessinerHoux(graphics, xCase + tailleCase * 0.66,
+                            yCase + tailleCase * 0.08, tailleCase * 0.22);
+                    break;
+                case TOUR:
+                    dessinerGuirlande(graphics, xCase, yCase, tailleCase);
+                    break;
+                case FOU:
+                    dessinerMitra(graphics, xCase, yCase, tailleCase);
+                    break;
+                case CAVALIER:
+                    dessinerEcharpe(graphics, xCase, yCase, tailleCase);
+                    break;
+                case PION:
+                    dessinerFlocon(graphics, xCase + tailleCase * 0.67,
+                            yCase + tailleCase * 0.63, tailleCase * 0.085);
+                    break;
+                default:
+                    throw new IllegalStateException("Type de pièce inconnu.");
+            }
         }
     }
 
@@ -870,6 +924,31 @@ public class JeuEchec extends JPanel {
         g.fillOval((int) (x + taille * 0.29), (int) (y + taille * 0.28),
                 Math.max(3, (int) (taille * 0.28)), Math.max(3, (int) (taille * 0.28)));
         g.dispose();
+    }
+
+    private static final class DeplacementAnime {
+        private final Piece piece;
+        private final int ligneDepart;
+        private final int colonneDepart;
+        private final int ligneArrivee;
+        private final int colonneArrivee;
+        private final long debut;
+        private final long duree;
+
+        private DeplacementAnime(Piece piece, int ligneDepart, int colonneDepart,
+                                 int ligneArrivee, int colonneArrivee, long debut, long duree) {
+            this.piece = piece;
+            this.ligneDepart = ligneDepart;
+            this.colonneDepart = colonneDepart;
+            this.ligneArrivee = ligneArrivee;
+            this.colonneArrivee = colonneArrivee;
+            this.debut = debut;
+            this.duree = duree;
+        }
+
+        private double progression(long maintenant) {
+            return Math.min(1.0, (double) (maintenant - debut) / duree);
+        }
     }
 
     private static final class Coup {
