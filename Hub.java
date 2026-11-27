@@ -184,7 +184,7 @@ public final class Hub extends JFrame {
         JPanel jeux = new JPanel(new GridLayout(1, 2, 10, 0));
         jeux.setOpaque(false);
         jeux.add(creerOption(dames, "10 × 10", "Captures en chaîne"));
-        jeux.add(creerOption(echecs, "8 Ã— 8", "Stratégie classique"));
+        jeux.add(creerOption(echecs, "8 × 8", "Stratégie classique"));
         choixJeu.add(jeux, BorderLayout.CENTER);
         reglage.add(choixJeu);
         reglage.add(Box.createVerticalStrut(14));
@@ -363,6 +363,7 @@ public final class Hub extends JFrame {
                     // remises sur le thread Swing avant toute modification de l'interface.
                     salon.definirEcouteur(message -> SwingUtilities.invokeLater(
                             () -> traiterMessageSalon(message)));
+                    // Demande immédiatement l'état initial; les mises à jour suivantes sont poussées par le serveur.
                     salon.envoyer("LIST");
                     pseudo.setEditable(false);
                     adresseServeur.setEditable(false);
@@ -404,6 +405,8 @@ public final class Hub extends JFrame {
     private void traiterMessageSalon(String message) {
         // Le protocole utilise une ligne par message. Le separateur "|" permet
         // de reconnaitre la commande, puis ses arguments eventuels.
+        // Exemples : PLAYERS|liste, CHALLENGE|id|pseudo|jeu, MATCH|token|jeu|couleur|adversaire.
+        // Le salon gere les invitations et les etats ; les coups passent ensuite par GameConnection.
         String[] champs = message.split("\\|", -1);
         try {
             switch (champs[0]) {
@@ -523,7 +526,7 @@ public final class Hub extends JFrame {
         // uniquement le canal prive associe a cette partie.
         String token = champs[1];
         String jeu = champs[2];
-        boolean joueurBlanc = "WHITE".equals(champs[3]);
+        boolean joueurBlanc = "WHITE".equals(champs[3]); // Traduit le role textuel du protocole en booléen exploite par le moteur.
         String adversaire = LobbyConnection.decoder(champs[4]);
         if ((!joueurBlanc && !"BLACK".equals(champs[3]))
                 || (!"chess".equals(jeu) && !"checkers".equals(jeu))) {
@@ -541,7 +544,7 @@ public final class Hub extends JFrame {
             @Override
             protected void done() {
                 try {
-                    GameConnection connexion = get();
+                    GameConnection connexion = get(); // Recupere le canal dont le serveur a confirme le signal READY.
                     setVisible(false);
                     ouvrirJeu(jeu, skinLocal, connexion, joueurBlanc);
                 } catch (Exception exception) {
@@ -670,7 +673,7 @@ public final class Hub extends JFrame {
                                                       boolean selectionne, boolean focus) {
             super.getListCellRendererComponent(liste, valeur, index, selectionne, focus);
             JoueurEnLigne joueur = (JoueurEnLigne) valeur;
-            setText("â—  " + joueur.pseudo
+            setText("●  " + joueur.pseudo
                     + (joueur.occupe ? "     Occupé" : "     Disponible"));
             setForeground(joueur.occupe ? SECONDAIRE : ACCENT);
             setFont(police(Font.BOLD, 13));

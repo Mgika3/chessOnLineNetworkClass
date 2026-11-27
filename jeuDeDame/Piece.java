@@ -15,6 +15,7 @@ public final class Piece {
     private boolean dame;
 
     public Piece(int couleur) {
+        // Refuse les entiers arbitraires pour que chaque Piece ait une couleur connue.
         if (couleur != BLANC && couleur != NOIR) {
             throw new IllegalArgumentException("La couleur doit être BLANC ou NOIR.");
         }

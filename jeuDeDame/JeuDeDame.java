@@ -90,6 +90,8 @@ public class JeuDeDame extends JPanel {
         timer = new Timer(1000, event -> actualiserHorloge());
         timer.start();
         if (connexion != null) {
+            // Les messages arrivent sur le thread de lecture reseau ; SwingUtilities
+            // reporte leur traitement au thread graphique avant de toucher au plateau.
             connexion.definirEcouteurCoups(coup -> SwingUtilities.invokeLater(
                     () -> appliquerCoupDistant(coup)));
         }
@@ -221,6 +223,8 @@ public class JeuDeDame extends JPanel {
             int ligneSuivante = ligne + pasLigne;
             int colonneSuivante = colonne + pasColonne;
             if (!piece.estDame()) {
+                // Un pion ordinaire saute exactement par-dessus une piece adverse,
+                // puis atterrit sur la case libre juste apres.
                 int ligneArrivee = ligne + 2 * pasLigne;
                 int colonneArrivee = colonne + 2 * pasColonne;
                 if (dansPlateau(ligneArrivee, colonneArrivee)
@@ -232,6 +236,7 @@ public class JeuDeDame extends JPanel {
                 continue;
             }
 
+            // Une dame peut chercher la premiere piece dans chacune des quatre diagonales.
             while (dansPlateau(ligneSuivante, colonneSuivante)
                     && etat[ligneSuivante][colonneSuivante] == null) {
                 ligneSuivante += pasLigne;
@@ -256,6 +261,7 @@ public class JeuDeDame extends JPanel {
     private List<int[]> destinationsSimples(Piece[][] etat, int ligne, int colonne) {
         Piece piece = etat[ligne][colonne];
         List<int[]> destinations = new ArrayList<>();
+        // Un pion avance vers le camp adverse ; une dame peut parcourir toute diagonale libre.
         for (int[] direction : DIRECTIONS) {
             if (!piece.estDame() && direction[0] != (piece.getCouleur() == BLANC ? -1 : 1)) {
                 continue;
@@ -279,6 +285,7 @@ public class JeuDeDame extends JPanel {
         if (partieTerminee) {
             return;
         }
+        // En reseau, le plateau adverse est visible mais ses clics sont bloques localement.
         if (connexion != null && joueur != couleurLocale) {
             return;
         }
@@ -294,6 +301,7 @@ public class JeuDeDame extends JPanel {
         if (x < xDepart || y < yDepart || !dansPlateau(ligne, colonne)) {
             return;
         }
+        // Les Noirs voient le plateau tourne ; on reconvertit le clic vers les coordonnees internes.
         if (couleurLocale == NOIR) {
             ligne = NOMBRE_CASES - 1 - ligne;
             colonne = NOMBRE_CASES - 1 - colonne;
@@ -346,6 +354,8 @@ public class JeuDeDame extends JPanel {
         int ligneDepart = ligneSelectionnee;
         int colonneDepart = colonneSelectionnee;
         if (transmettre && connexion != null) {
+            // Envoie les coordonnees internes, et non les coordonnees tournees de l'affichage.
+            // L'adversaire recevra ainsi le meme coup dans son propre repere de plateau.
             try {
                 connexion.envoyerCoup(ligneDepart + "|" + colonneDepart + "|"
                         + ligneArrivee + "|" + colonneArrivee);
@@ -371,6 +381,8 @@ public class JeuDeDame extends JPanel {
             }
         }
 
+        // Une rafle ne termine pas le tour apres la premiere capture : le meme pion
+        // doit continuer tant qu'une suite legale existe. La promotion termine ici la rafle.
         if (prise && !promotion && !suites.isEmpty()) {
             priseEnCours = true;
             ligneSelectionnee = ligneArrivee;
@@ -389,6 +401,8 @@ public class JeuDeDame extends JPanel {
         if (partieTerminee || connexion == null || joueur == couleurLocale) {
             return;
         }
+        // Le serveur ne valide pas les regles : le client controle donc les coordonnees,
+        // le joueur qui bouge et la destination legale avant d'appliquer le coup.
         String[] champs = message.split("\\|", -1);
         if (champs.length != 4) {
             statut.setText("Coup reçu invalide.");
@@ -448,6 +462,7 @@ public class JeuDeDame extends JPanel {
     }
 
     private void terminerTour() {
+        // Le changement de joueur n'arrive qu'une fois le deplacement simple ou toute la rafle finie.
         joueur = joueur == BLANC ? NOIR : BLANC;
         ligneSelectionnee = -1;
         colonneSelectionnee = -1;
@@ -472,6 +487,8 @@ public class JeuDeDame extends JPanel {
     }
 
     private List<Position> destinationsSelectionnees() {
+        // Plusieurs chemins de prise peuvent partager la meme premiere destination ;
+        // on ne dessine cette case qu'une fois pour eviter les doublons visuels.
         List<Position> destinations = new ArrayList<>();
         for (Chemin chemin : cheminsRestants) {
             if (!chemin.destinations.isEmpty()) {

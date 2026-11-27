@@ -128,10 +128,12 @@ public class GamePanel2 extends JPanel {
     }
 
     private void updateGame() {
+        // Convertit le temps en secondes ; le plafond limite les grands sauts apres un gel.
         long now = System.nanoTime(); // Mesure courante utilisée pour calculer le temps écoulé.
         double delta = Math.min((now - previousFrameTime) / 1_000_000_000.0, 0.05);
         previousFrameTime = now;
 
+        // Les actions maintenues au clavier restent dans pressedKeys jusqu'a leur relachement.
         double turn = (pressedKeys.contains("turn-right") ? 1 : 0)
                 - (pressedKeys.contains("turn-left") ? 1 : 0);
         player.rotate(turn * 2.2 * delta);
@@ -142,6 +144,7 @@ public class GamePanel2 extends JPanel {
                 - (pressedKeys.contains("strafe-left") ? 1 : 0);
         double movementLength = Math.hypot(forward, strafe);
         if (movementLength > 1) {
+            // Normalise le mouvement diagonal afin de conserver une vitesse constante.
             forward /= movementLength;
             strafe /= movementLength;
         }
@@ -151,6 +154,7 @@ public class GamePanel2 extends JPanel {
     }
 
     private boolean isWalkable(double x, double y) {
+        // Teste les quatre coins de la hitbox : le centre seul pourrait entrer dans un mur.
         int left = (int) Math.floor(x - PLAYER_RADIUS);
         int right = (int) Math.floor(x + PLAYER_RADIUS);
         int top = (int) Math.floor(y - PLAYER_RADIUS);
@@ -166,6 +170,7 @@ public class GamePanel2 extends JPanel {
     @Override
     protected void paintComponent(Graphics graphics) {
         super.paintComponent(graphics);
+        // Dessine sur une copie du contexte Swing, qui est detruite apres le rendu.
         Graphics2D g = (Graphics2D) graphics.create();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         drawWorld(g);
@@ -175,6 +180,7 @@ public class GamePanel2 extends JPanel {
     }
 
     private void drawWorld(Graphics2D g) {
+        // Fond ciel/sol d'abord, puis les tranches de murs calculees pour chaque rayon.
         int width = getWidth();
         int height = getHeight();
         int horizon = height / 2;
@@ -183,10 +189,12 @@ public class GamePanel2 extends JPanel {
         g.setPaint(new GradientPaint(0, horizon, floorTop, 0, height, floorBottom));
         g.fillRect(0, horizon, width, height - horizon);
 
+        // Le plan camera couvre le champ de vision de part et d'autre du vecteur avant.
         double planeLength = Math.tan(FIELD_OF_VIEW / 2);
         double planeX = -Math.sin(player.angle) * planeLength;
         double planeY = Math.cos(player.angle) * planeLength;
         for (int x = 0; x < width; x++) {
+            // Chaque colonne d'ecran correspond a une direction particuliere du champ de vision.
             double cameraX = 2.0 * x / width - 1.0;
             double rayX = Math.cos(player.angle) + planeX * cameraX;
             double rayY = Math.sin(player.angle) + planeY * cameraX;
@@ -195,9 +203,11 @@ public class GamePanel2 extends JPanel {
                 continue;
             }
 
+            // Projection perspective : la hauteur apparente varie inversement avec la distance.
             int wallHeight = (int) (height / Math.max(hit.distance, 0.001));
             int top = Math.max(0, horizon - wallHeight / 2);
             int bottom = Math.min(height, horizon + wallHeight / 2);
+            // La fraction de l'impact repère les détails du mur et module son éclairage selon la distance et l'orientation.
             double textureU = hit.side == 0
                     ? player.y + hit.distance * rayY
                     : player.x + hit.distance * rayX;
@@ -237,6 +247,7 @@ public class GamePanel2 extends JPanel {
     }
 
     private RayHit castRay(double rayX, double rayY) {
+        // DDA parcourt les cases dans l'ordre des frontieres les plus proches jusqu'au premier mur.
         int mapX = (int) player.x;
         int mapY = (int) player.y;
         double deltaX = rayX == 0 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayX);

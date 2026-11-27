@@ -12,6 +12,7 @@ public final class Piece {
         BLANC, NOIR;
 
         public Couleur adverse() {
+            // Il n'existe que deux couleurs : renvoyer l'autre est donc sans ambiguite.
             return this == BLANC ? NOIR : BLANC;
         }
     }
@@ -49,6 +50,7 @@ public final class Piece {
     }
 
     void promouvoir(Type nouveauType) {
+        // La promotion est une transition d'etat reservee au pion ; le roi est interdit.
         if (type != Type.PION || nouveauType == null
                 || nouveauType == Type.PION || nouveauType == Type.ROI) {
             throw new IllegalArgumentException("Promotion de pion invalide.");

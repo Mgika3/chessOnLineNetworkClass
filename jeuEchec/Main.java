@@ -11,14 +11,14 @@ import reseau.GameConnection;
  * Elle ferme aussi proprement la connexion réseau et arrête les timers associés.
  */
 public class Main extends JFrame {
-    private final JeuEchec jeu;
+    private final JeuEchec jeu; // Le moteur contient le plateau, les regles et les timers de cette fenetre.
 
-    public Main() {
-        this(false, null);
+    public Main() { // Constructeur du lancement autonome sans theme festif ni salon parent.
+        this(false, null); // Reutilise le constructeur general pour eviter de dupliquer l'initialisation.
     }
 
-    public Main(boolean modeNoel, Runnable retourAuHub) {
-        this(modeNoel, retourAuHub, null, true);
+    public Main(boolean modeNoel, Runnable retourAuHub) { // Variante avec choix visuel et rappel de retour au salon.
+        this(modeNoel, retourAuHub, null, true); // Pas de socket signifie une partie locale ; les Blancs commencent.
     }
 
     public Main(boolean modeNoel, Runnable retourAuHub,
@@ -28,15 +28,16 @@ public class Main extends JFrame {
         setContentPane(jeu); // Remplace le panneau Swing central par le plateau.
         pack(); // Calcule la taille depuis les preferredSize des composants.
         setDefaultCloseOperation(retourAuHub == null ? JFrame.EXIT_ON_CLOSE : JFrame.DISPOSE_ON_CLOSE); // Ferme le processus seul ou revient au salon.
-        addWindowListener(new WindowAdapter() {
+        addWindowListener(new WindowAdapter() { // Lie le nettoyage des ressources au cycle de vie de la fenetre.
             @Override
             public void windowClosed(WindowEvent event) {
-                jeu.arreterHorloge();
+                // Un timer Swing continue a produire des evenements tant qu'il n'est pas arrete.
+                jeu.arreterHorloge(); // Evite de laisser tourner les timers apres la fermeture.
                 if (connexion != null) {
-                    connexion.close();
+                    connexion.close(); // Fermer la socket notifie aussi le serveur de la fin du canal client.
                 }
                 if (retourAuHub != null) {
-                    retourAuHub.run();
+                    retourAuHub.run(); // Le salon est reaffiche sans redemarrer l'application.
                 }
             }
         });
@@ -44,7 +45,7 @@ public class Main extends JFrame {
         setVisible(true);
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(Main::new);
+    public static void main(String[] args) { // Point d'entree si cette classe est lancee directement.
+        SwingUtilities.invokeLater(Main::new); // Swing exige que la creation de fenetres se fasse sur son thread graphique.
     }
 }

@@ -19,9 +19,13 @@ import java.util.concurrent.atomic.*;
  */
 public final class HubServer implements AutoCloseable {
     private final int port;
+    // Un verrou unique protege l'etat partage, car chaque socket est lue par son propre thread.
     private final Object verrou = new Object();
+    // Cle = pseudo normalise ; valeur = socket et etat de la session connectee.
     private final Map<String, Joueur> joueurs = new HashMap<>();
+    // Les defis temporaires bloquent les participants jusqu'a acceptation, refus ou deconnexion.
     private final Map<String, Defi> defis = new HashMap<>();
+    // Une partie est indexee par son jeton et contient les deux canaux joueurs.
     private final Map<String, Partie> parties = new HashMap<>();
     private volatile boolean actif = true;
     private ServerSocket serveur;
@@ -41,7 +45,7 @@ public final class HubServer implements AutoCloseable {
          * protocole joueur sont ensuite déplacés dans un thread daemon distinct,
          * pour que plusieurs clients puissent attendre leurs commandes sans bloquer l'accueil.
          */
-        while (actif) {
+        while (actif) { // La socket d'ecoute reste ouverte jusqu'a close() ou erreur fatale.
             try {
                 Socket socket = serveur.accept(); // Bloque jusqu'à l'arrivée d'un nouveau client.
                 Thread worker = new Thread(() -> traiterConnexion(socket), "client-salon"); // Isole cette connexion des suivantes.
@@ -61,7 +65,7 @@ public final class HubServer implements AutoCloseable {
                     socket.getInputStream(), StandardCharsets.UTF_8)); // Lit les commandes texte en UTF-8.
             PrintWriter output = new PrintWriter(new OutputStreamWriter(
                     socket.getOutputStream(), StandardCharsets.UTF_8), true); // autoFlush envoie immédiatement chaque réponse.
-            String premiereLigne = input.readLine(); // La première ligne choisit le mode inscription ou partie.
+            String premiereLigne = input.readLine(); // Le serveur identifie le type de connexion a partir de sa premiere ligne.
             if (premiereLigne == null) {
                 socket.close();
                 return;
@@ -102,7 +106,7 @@ public final class HubServer implements AutoCloseable {
         joueur = new Joueur(pseudo, cle, socket, output); // Regroupe les données propres à cette session.
         // Le verrou transforme l'inscription en opération atomique : la même clé
         // ne peut être créée deux fois, et toutes les listes sont diffusées ensemble.
-        synchronized (verrou) {
+        synchronized (verrou) { // Evite que deux inscriptions concurrentes prennent le meme pseudo.
             if (joueurs.containsKey(cle)) { // Détecte un pseudo déjà inscrit, quelle que soit sa casse.
                 envoyer(output, "ERROR|" + encoder("Ce pseudo est déjà utilisé."));
                 socket.close();
@@ -126,11 +130,12 @@ public final class HubServer implements AutoCloseable {
     private void traiterCommande(Joueur joueur, String commande) {
         String[] champs = commande.split("\\|", -1); // Sépare sans perdre les paramètres présents.
         synchronized (verrou) { // Toutes les modifications d'état passent sous le même verrou.
-            if (joueurs.get(joueur.cle) != joueur) {
+            if (joueurs.get(joueur.cle) != joueur) { // Ignore un thread ancien si la session a deja ete retiree/remplacee.
                 return;
             }
             switch (champs[0]) {
                 case "LIST":
+                    // La liste est renvoyee a tous pour que chaque client voie le meme etat.
                     envoyerListes();
                     break;
                 case "CHALLENGE":
@@ -172,11 +177,13 @@ public final class HubServer implements AutoCloseable {
             erreur(expediteur, "Le pseudo du joueur ciblé est invalide.");
             return;
         }
-        Joueur cible = joueurs.get(pseudoCible.toLowerCase(Locale.ROOT));
+        Joueur cible = joueurs.get(pseudoCible.toLowerCase(Locale.ROOT)); // La casse du pseudo ne change pas l'identite.
         if (cible == null || cible == expediteur) {
             erreur(expediteur, "Ce joueur n’est plus disponible.");
             return;
         }
+        // Un joueur ne peut avoir qu'un engagement a la fois ; sinon les reponses
+        // a des defis concurrents rendraient l'etat du salon ambigu.
         if (expediteur.partie != null || cible.partie != null
                 || expediteur.defi != null || cible.defi != null) {
             erreur(expediteur, "Un des joueurs est déjà engagé dans une partie ou un défi.");
@@ -195,11 +202,13 @@ public final class HubServer implements AutoCloseable {
 
     private void accepterDefi(Joueur destinataire, String id) {
         Defi defi = defis.get(id);
+        // Seule la cible du defi peut l'accepter, et une seule fois car le defi est ensuite retire.
         if (defi == null || defi.cible != destinataire) {
             erreur(destinataire, "Ce défi n’est plus disponible.");
             return;
         }
         if (joueurs.get(defi.expediteur.cle) != defi.expediteur) {
+            // Le defi peut etre accepte juste apres la deconnexion de l'expediteur.
             defis.remove(id);
             libererDefi(defi);
             erreur(destinataire, "L’autre joueur s’est déconnecté.");
@@ -210,7 +219,7 @@ public final class HubServer implements AutoCloseable {
         Partie partie = new Partie(token, defi); // Initialise les deux emplacements de socket.
         // Un UUID empêche qu'un ancien client devine facilement l'identifiant
         // d'une partie encore vivante. Les deux joueurs y accèdent via ce canal privé.
-        parties.put(token, partie);
+        parties.put(token, partie); // Publie la partie avant que les clients tentent JOIN|token.
         defi.expediteur.partie = partie;
         destinataire.partie = partie;
         defis.remove(id);
@@ -241,6 +250,7 @@ public final class HubServer implements AutoCloseable {
         synchronized (verrou) {
             partie = champs.length == 2 ? parties.get(champs[1]) : null; // Recherche la partie uniquement via son token.
         }
+        // Le token seul ne suffit pas a la connexion : Partie limite aussi le canal a deux sockets.
         if (partie == null || !partie.ajouter(socket, output)) {
             envoyer(output, "ERROR|" + encoder("Cette partie n’est plus disponible."));
             socket.close();
@@ -260,7 +270,9 @@ public final class HubServer implements AutoCloseable {
             }
         }
         try {
-            if (!partie.pret.await(30, TimeUnit.SECONDS)) {
+            // Chaque joueur garde un thread de lecture dedie. Les coups recus sont
+            // retransmis tels quels : le serveur ne valide pas les regles du jeu.
+            if (!partie.pret.await(30, TimeUnit.SECONDS)) { // N'attend pas indefiniment un adversaire qui n'arrive pas.
                 envoyer(output, "ERROR|" + encoder("L’adversaire ne s’est pas connecté à temps."));
                 return;
             }
@@ -285,6 +297,8 @@ public final class HubServer implements AutoCloseable {
                 return;
             }
             parties.remove(partie.token);
+            // Le premier canal ferme la partie pour les deux joueurs : une partie ne
+            // reste pas ouverte avec un participant fantome apres une deconnexion.
             Joueur[] participants = {partie.defi.expediteur, partie.defi.cible};
             for (Joueur participant : participants) {
                 if (participant.partie == partie) {
@@ -292,7 +306,7 @@ public final class HubServer implements AutoCloseable {
                     participant.envoyer("MATCH_END|");
                 }
             }
-            partie.fermerCanaux(socketDeconnecte);
+            partie.fermerCanaux(socketDeconnecte); // Ferme le canal restant et debloque un eventuel thread en attente.
             actualiserListes();
         }
     }
@@ -302,8 +316,8 @@ public final class HubServer implements AutoCloseable {
             if (joueurs.get(joueur.cle) != joueur) {
                 return;
             }
-            joueurs.remove(joueur.cle);
-            if (joueur.defi != null) {
+            joueurs.remove(joueur.cle); // Retire d'abord la session pour qu'elle n'apparaisse plus disponible.
+            if (joueur.defi != null) { // Une deconnexion annule aussi le defi en attente et libere son adversaire.
                 Defi defi = defis.remove(joueur.defi);
                 if (defi != null) {
                     libererDefi(defi);
@@ -319,6 +333,8 @@ public final class HubServer implements AutoCloseable {
     }
 
     private void libererDefi(Defi defi) {
+        // Compare les identifiants avant effacement pour ne pas annuler un autre defi
+        // si l'etat du joueur a change entre-temps.
         if (defi.expediteur.defi == defi.id) {
             defi.expediteur.defi = null;
         }
@@ -341,11 +357,12 @@ public final class HubServer implements AutoCloseable {
         List<String> entrees = new ArrayList<>();
         for (Joueur joueur : joueurs.values()) {
             if (joueur != destinataire) {
+                // "0" signifie libre, "1" signifie deja en defi ou en partie.
                 entrees.add(encoder(joueur.pseudo) + ":"
                         + (joueur.partie == null && joueur.defi == null ? "0" : "1"));
             }
         }
-        destinataire.envoyer("PLAYERS|" + String.join(",", entrees));
+        destinataire.envoyer("PLAYERS|" + String.join(",", entrees)); // Un message de ligne contient toutes les entrees, separees par virgules.
     }
 
     private void erreur(Joueur joueur, String message) {
@@ -353,6 +370,7 @@ public final class HubServer implements AutoCloseable {
     }
 
     private static void envoyer(PrintWriter output, String ligne) {
+        // Plusieurs threads peuvent écrire sur un même flux ; le verrou garde chaque ligne entière.
         synchronized (output) {
             output.println(ligne); // Ajoute aussi automatiquement le saut de ligne du protocole.
             output.flush(); // Force l'envoi même si PrintWriter est configuré sans autoFlush ici.
@@ -360,6 +378,7 @@ public final class HubServer implements AutoCloseable {
     }
 
     private static String encoder(String valeur) {
+        // L'encodage URL-safe evite le caractere "|" reserve a la structure des messages.
         return Base64.getUrlEncoder().withoutPadding().encodeToString(valeur.getBytes(StandardCharsets.UTF_8));
     }
 
@@ -369,10 +388,10 @@ public final class HubServer implements AutoCloseable {
 
     @Override
     public void close() {
-        actif = false;
+        actif = false; // Demande a la boucle accept() de s'arreter.
         if (serveur != null) {
             try {
-                serveur.close();
+                serveur.close(); // Debloque accept() en interrompant la socket d'ecoute.
             } catch (IOException exception) {
                 System.err.println("Impossible d’arrêter le serveur : " + exception.getMessage());
             }
@@ -416,8 +435,8 @@ public final class HubServer implements AutoCloseable {
         private final Defi defi;
         private final Socket[] sockets = new Socket[2];
         private final PrintWriter[] sorties = new PrintWriter[2];
-        private final CountDownLatch pret = new CountDownLatch(1);
-        private final AtomicBoolean terminee = new AtomicBoolean();
+        private final CountDownLatch pret = new CountDownLatch(1); // Compte a rebours libere quand les deux joueurs sont connectes.
+        private final AtomicBoolean terminee = new AtomicBoolean(); // Garde atomique contre les fins de partie concurrentes.
         private boolean demarrageEnvoye;
 
         private Partie(String token, Defi defi) {
@@ -425,6 +444,7 @@ public final class HubServer implements AutoCloseable {
             this.defi = defi;
         }
 
+        // Réserve atomiquement une place pour chacun des deux clients du canal.
         private synchronized boolean ajouter(Socket socket, PrintWriter output) {
             if (sockets[0] == null) {
                 sockets[0] = socket; // Première place réservée au premier joueur.
@@ -452,6 +472,7 @@ public final class HubServer implements AutoCloseable {
         }
 
         private synchronized void fermerCanaux(Socket socketDeconnecte) {
+            // Ne referme pas la socket deja fermee par le thread qui a detecte la coupure.
             for (Socket socket : sockets) {
                 if (socket != null && socket != socketDeconnecte) {
                     try {

@@ -25,6 +25,7 @@ public class Player {
 
     public void rotate(double amount) {
         angle += amount; // Modifie l'orientation en radians.
+        // Garde l'angle dans un tour complet pour eviter qu'il grandisse sans limite.
         if (angle > Math.PI) {
             angle -= Math.PI * 2;
         } else if (angle < -Math.PI) {
@@ -33,11 +34,13 @@ public class Player {
     }
 
     public void move(double forward, double strafe, BiPredicate<Double, Double> canOccupy) {
+        // Transforme avant/arriere et deplacement lateral du repere joueur vers les axes du monde.
         double movementX = Math.cos(angle) * forward - Math.sin(angle) * strafe; // Composante horizontale dans le repère de vue.
         double movementY = Math.sin(angle) * forward + Math.cos(angle) * strafe; // Composante verticale dans le repère de vue.
 
         double nextX = x + movementX;
         double nextY = y + movementY;
+        // Tester X puis Y separement permet de longer un mur en restant bloque sur l'autre axe.
         if (canOccupy.test(nextX, y)) {
             x = nextX; // Teste et applique l'axe horizontal séparément.
         }
@@ -47,6 +50,7 @@ public class Player {
     }
 
     public void reset() {
+        // Reinitialise position et regard aux valeurs capturees a la construction.
         x = startX;
         y = startY;
         angle = -Math.PI / 2;

@@ -26,6 +26,7 @@ public class Serveur {
             return;
         }
         try {
+            // HubServer prend en charge les connexions apres validation de ce port.
             new HubServer(port).demarrer(); // Construit puis lance le serveur sans garder de référence locale.
         } catch (IOException exception) {
             System.err.println("Impossible de démarrer le serveur de salon : " + exception.getMessage());

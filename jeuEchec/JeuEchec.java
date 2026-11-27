@@ -80,6 +80,8 @@ public class JeuEchec extends JPanel {
         timerAnimation = new Timer(16, event -> actualiserAnimations());
         timerAnimation.setCoalesce(true);
         if (connexion != null) {
+            // Le thread reseau ne modifie jamais Swing directement : invokeLater remet
+            // l'application du mouvement dans la file de l'Event Dispatch Thread.
             connexion.definirEcouteurCoups(coup -> SwingUtilities.invokeLater(
                     () -> appliquerCoupDistant(coup)));
         }
@@ -210,12 +212,12 @@ public class JeuEchec extends JPanel {
 
     private void ajouterCoupsPion(List<Coup> coups, int ligne, int colonne, Piece[][] etat,
                                   int epLigne, int epColonne, Piece pion) {
-        int direction = pion.getCouleur() == Piece.Couleur.BLANC ? -1 : 1;
+        int direction = pion.getCouleur() == Piece.Couleur.BLANC ? -1 : 1; // Les Blancs avancent vers les lignes 0, les Noirs vers les lignes 7.
         int ligneAvancee = ligne + direction;
         if (dansPlateau(ligneAvancee, colonne) && etat[ligneAvancee][colonne] == null) {
             ajouterCoupPionAvecPromotion(coups, ligne, colonne, ligneAvancee, colonne);
-            int ligneDeuxPas = ligne + direction * 2;
-            int ligneDepart = pion.getCouleur() == Piece.Couleur.BLANC ? 6 : 1;
+            int ligneDeuxPas = ligne + direction * 2; // Le double pas n'est envisageable que depuis la rangée de départ.
+            int ligneDepart = pion.getCouleur() == Piece.Couleur.BLANC ? 6 : 1; // Rangée initiale des pions blancs ou noirs.
             if (ligne == ligneDepart && etat[ligneDeuxPas][colonne] == null) {
                 coups.add(new Coup(ligne, colonne, ligneDeuxPas, colonne));
             }
@@ -233,6 +235,8 @@ public class JeuEchec extends JPanel {
                     && etat[ligne][cibleColonne] != null
                     && etat[ligne][cibleColonne].getType() == Piece.Type.PION
                     && etat[ligne][cibleColonne].getCouleur() != pion.getCouleur()) {
+                // En passant : le pion adverse a avance de deux cases au tour precedent.
+                // epLigne/epColonne indiquent la case d'arrivee du pion qui capture.
                 coups.add(new Coup(ligne, colonne, ligneAvancee, cibleColonne, null, true, false));
             }
         }
@@ -253,6 +257,8 @@ public class JeuEchec extends JPanel {
 
     private void ajouterCoupsRoque(List<Coup> coups, int ligne, int colonne,
                                    Piece[][] etat, Piece roi) {
+        // Le roque est refuse si le roi a bouge, s'il est en echec, ou si une case
+        // qu'il traverse est attaquee : ces conditions sont distinctes du chemin libre.
         int ligneDepart = roi.getCouleur() == Piece.Couleur.BLANC ? 7 : 0;
         if (ligne != ligneDepart || colonne != 4 || roi.aBouge()
                 || caseAttaquee(etat, ligne, colonne, roi.getCouleur().adverse())) {
@@ -284,6 +290,7 @@ public class JeuEchec extends JPanel {
     private boolean caseAttaqueeAvecRoiEn(Piece[][] etat, int departLigne, int departColonne,
                                           int arriveeLigne, int arriveeColonne,
                                           Piece.Couleur attaquant) {
+        // Simule le roi sur sa case de passage pour détecter les attaques révélées par son déplacement.
         Piece[][] simulation = copierPlateau(etat);
         simulation[arriveeLigne][arriveeColonne] = simulation[departLigne][departColonne];
         simulation[departLigne][departColonne] = null;
@@ -344,6 +351,8 @@ public class JeuEchec extends JPanel {
 
     private boolean caseAttaquee(Piece[][] etat, int ligneCible, int colonneCible,
                                  Piece.Couleur attaquant) {
+        // Cette fonction calcule les cases controlees, pas les coups legaux.
+        // C'est important pour les pions et pour les cases traversees par le roi au roque.
         for (int ligne = 0; ligne < TAILLE; ligne++) {
             for (int colonne = 0; colonne < TAILLE; colonne++) {
                 Piece piece = etat[ligne][colonne];
@@ -396,6 +405,8 @@ public class JeuEchec extends JPanel {
 
     private boolean cheminLibre(Piece[][] etat, int ligneDepart, int colonneDepart,
                                 int ligneArrivee, int colonneArrivee) {
+        // Les tours, fous et dames peuvent glisser seulement si toutes les cases
+        // intermediaires sont vides ; la case d'arrivee est testee par l'appelant.
         int pasLigne = Integer.compare(ligneArrivee, ligneDepart);
         int pasColonne = Integer.compare(colonneArrivee, colonneDepart);
         int ligne = ligneDepart + pasLigne;
@@ -447,6 +458,8 @@ public class JeuEchec extends JPanel {
                     coup.colonneArrivee, promotion, coup.enPassant, coup.roque);
         }
         if (transmettre && connexion != null) {
+            // En mode reseau, l'emetteur envoie le coup avant de modifier son plateau.
+            // Si l'ecriture echoue, on abandonne localement pour eviter une desynchronisation.
             String message = coup.ligneDepart + "|" + coup.colonneDepart + "|"
                     + coup.ligneArrivee + "|" + coup.colonneArrivee + "|"
                     + (coup.promotion == null ? "-" : coup.promotion.name()); // Encodage compact du mouvement.
@@ -519,6 +532,8 @@ public class JeuEchec extends JPanel {
                     || !dansPlateau(ligneArrivee, colonneArrivee)) {
                 throw new IllegalArgumentException();
             }
+            // Le client ne fait pas confiance au texte reseau : il recherche ce mouvement
+            // dans ses propres coups legaux avant de modifier son etat local.
             for (Coup coup : coupsPour(ligneDepart, colonneDepart, ligneArrivee, colonneArrivee)) {
                 if (coup.promotion == promotion) {
                     jouerCoup(coup, false);
@@ -542,6 +557,8 @@ public class JeuEchec extends JPanel {
     }
 
     private void verifierFinPartie() {
+        // Cette verification est faite apres chaque coup, une fois que le joueur actif
+        // et sa liste de coups legaux ont ete recalcules.
         if (coupsLegaux.isEmpty()) {
             partieTerminee = true;
             if (estEnEchec(plateau, joueur)) {
@@ -595,7 +612,7 @@ public class JeuEchec extends JPanel {
         // La clé est sans horloge ni nombre de coups : elle décrit uniquement la position,
         // le joueur actif, le droit de roque et la prise en passant. Cela permet de détecter
         // correctement les répétitions au lieu de compter des coups différents artificiellement.
-        StringBuilder cle = new StringBuilder();
+        StringBuilder cle = new StringBuilder(); // Encodage compact de chaque case du plateau.
         for (int ligne = 0; ligne < TAILLE; ligne++) {
             for (int colonne = 0; colonne < TAILLE; colonne++) {
                 Piece piece = plateau[ligne][colonne];
@@ -603,7 +620,7 @@ public class JeuEchec extends JPanel {
                         + piece.getType().name().substring(0, 1));
             }
         }
-        cle.append(joueur == Piece.Couleur.BLANC ? 'b' : 'n');
+        cle.append(joueur == Piece.Couleur.BLANC ? 'b' : 'n'); // Deux plateaux identiques avec un joueur different ne sont pas la meme position.
         for (Piece.Couleur couleur : Piece.Couleur.values()) {
             int ligne = couleur == Piece.Couleur.BLANC ? 7 : 0;
             Piece roi = plateau[ligne][4];
@@ -622,6 +639,7 @@ public class JeuEchec extends JPanel {
         if (partieTerminee || !deplacementsAnimes.isEmpty()) {
             return;
         }
+        // En partie en ligne, une entree utilisateur n'est acceptee que pendant son propre tour.
         if (connexion != null && joueur != couleurLocale) {
             return;
         }
@@ -640,6 +658,8 @@ public class JeuEchec extends JPanel {
         if (!dansPlateau(ligne, colonne)) {
             return;
         }
+        // Le plateau noir est dessine tourne ; les coordonnees de souris sont inversees
+        // pour continuer a utiliser le meme tableau de jeu pour les deux joueurs.
         if (couleurLocale == Piece.Couleur.NOIR) {
             ligne = TAILLE - 1 - ligne;
             colonne = TAILLE - 1 - colonne;

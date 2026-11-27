@@ -20,6 +20,8 @@ import javax.swing.Timer;
  * lors d'un ralentissement ponctuel de l'affichage Swing.
  */
 public class GamePanel extends JPanel {
+    // Grille du niveau : 0 = sol franchissable, toute autre valeur = type de mur.
+    // Les bords sont fermes pour que les rayons et le joueur ne sortent pas de la carte.
     private static final int[][] MAP = {
         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
         {1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
@@ -62,13 +64,13 @@ public class GamePanel extends JPanel {
     private static final Color MAP_WALL_NOEL = new Color(99, 143, 158);
     private static final Color MAP_WALL_NORMAL = new Color(130, 77, 62);
 
-    private final Player player = new Player(1.5, 1.5);
-    private final Set<String> pressedKeys = new HashSet<>();
+    private final Player player = new Player(1.5, 1.5); // Position initiale au centre de la case (1, 1).
+    private final Set<String> pressedKeys = new HashSet<>(); // Etat des touches ; un appui maintenu agit chaque frame.
     private final Timer gameTimer;
     private final boolean modeNoel;
     private long previousFrameTime;
     private long accumulatorNanos;
-    private final RayHit reusableHit = new RayHit();
+    private final RayHit reusableHit = new RayHit(); // Reutilise un seul resultat de rayon pour limiter les allocations par pixel.
     private final Line2D.Double[] radarLines = new Line2D.Double[29];
     private final Color[] wallShades;
     private final Color[] wallBrickShades;
@@ -115,6 +117,8 @@ public class GamePanel extends JPanel {
     }
 
     private void configureKeys() {
+        // ZQSD deplace le joueur, les fleches tournent la vue et Maj accelere.
+        // Chaque touche possede une action d'appui et une action de relachement.
         bindKey("pressed Z", "forward-on-z", "forward", true);
         bindKey("released Z", "forward-off-z", "forward", false);
         bindKey("pressed S", "backward-on", "backward", true);
@@ -187,6 +191,8 @@ public class GamePanel extends JPanel {
     }
 
     private void stepGame(double delta) {
+        // Transforme les touches en commandes relatives au joueur, puis applique la vitesse
+        // proportionnellement au temps ecoule pour que le mouvement reste independant du FPS.
         double turn = (pressedKeys.contains("turn-right") ? 1 : 0)
                 - (pressedKeys.contains("turn-left") ? 1 : 0);
         player.rotate(turn * 2.2 * delta);
@@ -234,6 +240,7 @@ public class GamePanel extends JPanel {
         int width = getWidth();
         int height = getHeight();
         int horizon = height / 2;
+        // Les degradés dependent de la taille : on ne les recalcule qu'apres un redimensionnement.
         if (width != gradientWidth || height != gradientHeight) {
             int safeHorizon = Math.max(1, horizon);
             int safeHeight = Math.max(safeHorizon + 1, height);
@@ -247,13 +254,15 @@ public class GamePanel extends JPanel {
         g.setPaint(floorGradient);
         g.fillRect(0, horizon, width, height - horizon);
 
+        // Le vecteur direction donne l'axe du regard ; le plan camera distribue les rayons
+        // de gauche a droite dans un angle de FIELD_OF_VIEW.
         double planeLength = Math.tan(FIELD_OF_VIEW / 2);
         double directionX = Math.cos(player.angle);
         double directionY = Math.sin(player.angle);
         double planeX = -directionY * planeLength;
         double planeY = directionX * planeLength;
         for (int x = 0; x < width; x++) {
-            double cameraX = 2.0 * x / width - 1.0;
+            double cameraX = 2.0 * x / width - 1.0; // Convertit la colonne en position normalisee entre -1 et 1.
             double rayX = directionX + planeX * cameraX;
             double rayY = directionY + planeY * cameraX;
             RayHit hit = castRay(rayX, rayY);
@@ -264,11 +273,12 @@ public class GamePanel extends JPanel {
             int wallHeight = (int) (height / Math.max(hit.distance, 0.001));
             int top = Math.max(0, horizon - wallHeight / 2);
             int bottom = Math.min(height, horizon + wallHeight / 2);
+            // La coordonnee fractionnaire du point d'impact donne la position horizontale sur le mur.
             double textureU = hit.side == 0
                     ? player.y + hit.distance * rayY
                     : player.x + hit.distance * rayX;
             textureU -= Math.floor(textureU);
-            float brightness = (float) Math.max(0.20, 1.0 - hit.distance / 13.0);
+            float brightness = (float) Math.max(0.20, 1.0 - hit.distance / 13.0); // Les murs lointains sont assombris, avec une limite minimale.
             if (hit.side == 1) {
                 brightness *= 0.72f;
             }
@@ -309,6 +319,8 @@ public class GamePanel extends JPanel {
          */
         int mapX = (int) player.x;
         int mapY = (int) player.y;
+        // deltaX/deltaY representent la distance entre deux franchissements successifs
+        // de ligne/colonne par le rayon ; l'infini traite un rayon parfaitement vertical/horizontal.
         double deltaX = rayX == 0 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayX);
         double deltaY = rayY == 0 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayY);
         int stepX = rayX < 0 ? -1 : 1;
@@ -319,7 +331,7 @@ public class GamePanel extends JPanel {
                 ? (player.y - mapY) * deltaY : (mapY + 1.0 - player.y) * deltaY;
         int side = 0;
 
-        for (int steps = 0; steps < 64; steps++) {
+        for (int steps = 0; steps < 64; steps++) { // Limite de securite contre une boucle infinie si une carte est mal fermee.
             if (sideX < sideY) {
                 sideX += deltaX;
                 mapX += stepX;
@@ -413,6 +425,7 @@ public class GamePanel extends JPanel {
 
     // Tables de nuances pré-calculées: plus aucune Color créée dans la boucle de raycasting.
     private static Color[] makeShadeTable(Color source) {
+        // Precalcule des nuances pour eviter de reconstruire les memes couleurs a chaque frame.
         Color[] shades = new Color[SHADE_LEVELS + 1];
         for (int i = 0; i <= SHADE_LEVELS; i++) {
             float factor = i / (float) SHADE_LEVELS;
@@ -428,6 +441,7 @@ public class GamePanel extends JPanel {
     }
 
     public void stopGame() {
+        // Appele par Main quand la fenetre se ferme, pour arreter le timer de simulation.
         gameTimer.stop();
     }
 

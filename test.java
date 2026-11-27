@@ -12,7 +12,7 @@ public class test {
         String hote = "10.157.3.8"; // Adresse utilisée uniquement pour cet essai manuel.
         try{
             addr = InetAddress.getByName(hote); // Résolution DNS ou analyse de l'adresse IP.
-            if(addr.isReachable(1000)) { // Teste une réponse dans une fenêtre de 1000 ms.
+            if(addr.isReachable(1000)) { // Teste une reponse ICMP ou equivalente ; ce test ne valide pas le port TCP du salon.
                 System.out.println("Node "+hote+" is reachable!!");
             }
         }

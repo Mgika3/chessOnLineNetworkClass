@@ -11,15 +11,15 @@ import reseau.GameConnection;
  * L'appel retourAuHub permet au salon de reprendre la main lors de la fermeture.
  */
 public class Main extends JFrame {
-    private final JeuDeDame jeu;
+    private final JeuDeDame jeu; // Le moteur de dames gere son plateau et son horloge.
 
     //Fenetre principale du jeu de dame
-    public Main(){
-        this(false, null);
+    public Main() { // Lance une partie autonome avec les reglages par defaut.
+        this(false, null); // Delegue au constructeur complet au lieu de refaire l'initialisation.
     }
 
-    public Main(boolean modeNoel, Runnable retourAuHub) {
-        this(modeNoel, retourAuHub, null, true);
+    public Main(boolean modeNoel, Runnable retourAuHub) { // Constructeur utilise par l'interface du salon.
+        this(modeNoel, retourAuHub, null, true); // Une connexion nulle indique une partie locale.
     }
 
     public Main(boolean modeNoel, Runnable retourAuHub,
@@ -29,15 +29,16 @@ public class Main extends JFrame {
         this.setContentPane(jeu); // Place le plateau comme contenu principal.
         this.pack(); // Calcule la taille naturelle de la fenêtre.
         this.setDefaultCloseOperation(retourAuHub == null ? JFrame.EXIT_ON_CLOSE : JFrame.DISPOSE_ON_CLOSE); // Choisit le comportement de fermeture.
-        addWindowListener(new WindowAdapter() {
+        addWindowListener(new WindowAdapter() { // Observe la fermeture pour liberer les ressources du jeu et du reseau.
             @Override
             public void windowClosed(WindowEvent event) {
+                // Arrete l'horloge de la partie pour liberer son timer Swing.
                 jeu.arreterHorloge();
                 if (connexion != null) {
-                    connexion.close();
+                    connexion.close(); // La fermeture du canal avertit indirectement le serveur du depart du client.
                 }
                 if (retourAuHub != null) {
-                    retourAuHub.run();
+                    retourAuHub.run(); // Retour a l'interface du salon apres fermeture du plateau.
                 }
             }
         });
@@ -45,7 +46,7 @@ public class Main extends JFrame {
         this.setVisible(true);
     }
 
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(Main::new);
+    public static void main(String[] args) { // Lance directement une fenetre de dames sans passer par Hub.
+        SwingUtilities.invokeLater(Main::new); // Construit l'interface sur le thread Swing.
     }
 }
