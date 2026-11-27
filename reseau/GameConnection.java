@@ -5,6 +5,15 @@ import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 
+/**
+ * Canal réseau dédié aux coups d'une partie.
+ *
+ * Cette classe possède deux modes. En réseau directe, host() accepte une connexion
+ * locale tandis que join() se connecte à cette adresse. En mode salon, joinHub()
+ * utilise d'abord un jeton transmis par HubServer, puis attend le signal READY avant
+ * de rendre le canal utilisable. Dans tous les cas, les coups sont échangés sous la
+ * forme texte "MOVE|..."; la logique métier reste dans JeuEchec ou JeuDeDame.
+ */
 public final class GameConnection implements AutoCloseable {
     private final Socket socket;
     private final BufferedReader input;
@@ -28,7 +37,7 @@ public final class GameConnection implements AutoCloseable {
     }
 
     public static GameConnection host(int port, String game, boolean modeNoel) throws IOException {
-        if (!"chess".equals(game) && !"checkers".equals(game)) {
+        if (!"chess".equals(game) && !"checkers".equals(game)) { // Validation du nom de jeu avant toute ouverture réseau.
             throw new IllegalArgumentException("Jeu inconnu : " + game);
         }
         try (ServerSocket server = new ServerSocket(port)) {
@@ -102,7 +111,7 @@ public final class GameConnection implements AutoCloseable {
             String ligne;
             while ((ligne = input.readLine()) != null) {
                 if (ligne.startsWith("MOVE|")) {
-                    moveListener.accept(ligne.substring("MOVE|".length()));
+                    moveListener.accept(ligne.substring("MOVE|".length())); // Retire le préfixe pour ne transmettre que le coup.
                 }
             }
         } catch (IOException exception) {
@@ -113,7 +122,7 @@ public final class GameConnection implements AutoCloseable {
     }
 
     public synchronized void envoyerCoup(String coup) throws IOException {
-        if (socket.isClosed() || !socket.isConnected()) {
+        if (socket.isClosed() || !socket.isConnected()) { // Interdit l'envoi si le canal est coupé.
             throw new IOException("La connexion à l’adversaire est fermée.");
         }
         output.println("MOVE|" + coup);

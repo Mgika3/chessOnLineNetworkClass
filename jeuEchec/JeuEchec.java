@@ -1,22 +1,8 @@
 package jeuEchec;
 
-import javax.swing.BorderFactory;
-import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.SwingConstants;
-import javax.swing.Timer;
-import javax.swing.SwingUtilities;
-import java.awt.BasicStroke;
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
 import java.awt.geom.Path2D;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,6 +12,15 @@ import java.util.Map;
 import java.io.IOException;
 import reseau.GameConnection;
 
+/**
+ * Plateau complet du jeu d'échecs et moteur de ses règles.
+ *
+ * Le tableau plateau est l'état source. Les coups sont représentés par de petits
+ * objets Coup, puis recalculés légalement avant chaque sélection. Avant d'autoriser
+ * un coup, une copie du plateau est créée et le mouvement y est appliqué afin de
+ * vérifier que le roi du joueur n'y resterait pas en échec. Cette simulation évite
+ * des cases particulières difficiles à traiter directement.
+ */
 public class JeuEchec extends JPanel {
     private static final int TAILLE = 8;
     private static final Color CASE_CLAIRE = new Color(238, 219, 180);
@@ -143,6 +138,11 @@ public class JeuEchec extends JPanel {
 
     private List<Coup> calculerCoupsLegaux(Piece.Couleur couleur, Piece[][] etat,
                                            int epLigne, int epColonne) {
+        /*
+         * C'est le filtre principal de sécurité des échecs : chaque mouvement brut est
+         * simulé sur un plateau copié. On conserve seulement les mouvements dont la couleur
+         * jouante ne laisse pas son propre roi en échec.
+         */
         List<Coup> coups = new ArrayList<>();
         for (int ligne = 0; ligne < TAILLE; ligne++) {
             for (int colonne = 0; colonne < TAILLE; colonne++) {
@@ -411,6 +411,12 @@ public class JeuEchec extends JPanel {
     }
 
     private void appliquerCoup(Piece[][] etat, Coup coup) {
+        /*
+         * Cette méthode centralise toutes les transformations d'un mouvement :
+         * prise, prise en passant, promotion, roque et mise à jour de l'état enPassant.
+         * Les simulations l'utilisent aussi, ce qui garantit qu'elles suivent exactement
+         * les mêmes règles que le vrai mouvement.
+         */
         Piece piece = etat[coup.ligneDepart][coup.colonneDepart];
         etat[coup.ligneDepart][coup.colonneDepart] = null;
         if (coup.enPassant) {
@@ -432,9 +438,9 @@ public class JeuEchec extends JPanel {
     }
 
     private void jouerCoup(Coup coup, boolean transmettre) {
-        Piece piece = plateau[coup.ligneDepart][coup.colonneDepart];
-        boolean deplacementPion = piece.getType() == Piece.Type.PION;
-        boolean prise = plateau[coup.ligneArrivee][coup.colonneArrivee] != null || coup.enPassant;
+        Piece piece = plateau[coup.ligneDepart][coup.colonneDepart]; // Pièce réellement déplacée.
+        boolean deplacementPion = piece.getType() == Piece.Type.PION; // Sert à remettre à zéro la règle des 50 coups.
+        boolean prise = plateau[coup.ligneArrivee][coup.colonneArrivee] != null || coup.enPassant; // Détecte une capture normale ou en passant.
         if (coup.promotion != null && transmettre) {
             Piece.Type promotion = choisirPromotion();
             coup = new Coup(coup.ligneDepart, coup.colonneDepart, coup.ligneArrivee,
@@ -443,7 +449,7 @@ public class JeuEchec extends JPanel {
         if (transmettre && connexion != null) {
             String message = coup.ligneDepart + "|" + coup.colonneDepart + "|"
                     + coup.ligneArrivee + "|" + coup.colonneArrivee + "|"
-                    + (coup.promotion == null ? "-" : coup.promotion.name());
+                    + (coup.promotion == null ? "-" : coup.promotion.name()); // Encodage compact du mouvement.
             try {
                 connexion.envoyerCoup(message);
             } catch (IOException exception) {
@@ -492,10 +498,12 @@ public class JeuEchec extends JPanel {
     }
 
     private void appliquerCoupDistant(String message) {
+        // Les coups distants passent par SwingUtilities.invokeLater pour être appliqués
+        // sur l'unique thread Swing. Le garde "joueur == couleurLocale" évite un echo local.
         if (partieTerminee || connexion == null || joueur == couleurLocale) {
             return;
         }
-        String[] champs = message.split("\\|", -1);
+        String[] champs = message.split("\\|", -1); // Six paramètres sont attendus pour reproduire exactement le coup.
         if (champs.length != 5) {
             statut.setText("Coup reçu invalide.");
             return;
@@ -584,6 +592,9 @@ public class JeuEchec extends JPanel {
     }
 
     private String clePosition() {
+        // La clé est sans horloge ni nombre de coups : elle décrit uniquement la position,
+        // le joueur actif, le droit de roque et la prise en passant. Cela permet de détecter
+        // correctement les répétitions au lieu de compter des coups différents artificiellement.
         StringBuilder cle = new StringBuilder();
         for (int ligne = 0; ligne < TAILLE; ligne++) {
             for (int colonne = 0; colonne < TAILLE; colonne++) {

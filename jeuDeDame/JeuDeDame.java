@@ -22,6 +22,14 @@ import java.util.List;
 import java.io.IOException;
 import reseau.GameConnection;
 
+/**
+ * Plateau international 10x10 et moteur des règles de dames.
+ *
+ * Le moteur recherche tous les chemins de prise possibles. Si des prises existent,
+ * seules celles ayant le plus grand nombre de pièces capturées restent autorisées.
+ * Dans une même prise, cheminsLegaux représente les coups courts disponibles tandis
+ * que cheminsRestants conserve les destinations possibles au milieu d'une rafle.
+ */
 public class JeuDeDame extends JPanel {
     private static final int NOMBRE_CASES = 10;
     private static final int BLANC = Piece.BLANC;
@@ -95,7 +103,7 @@ public class JeuDeDame extends JPanel {
         for (int ligne = 0; ligne < 4; ligne++) {
             for (int colonne = 0; colonne < NOMBRE_CASES; colonne++) {
                 if ((ligne + colonne) % 2 != 0) {
-                    plateau[ligne][colonne] = new Piece(NOIR);
+                    plateau[ligne][colonne] = new Piece(NOIR); // Les quatre premières rangées des Noirs.
                 }
             }
         }
@@ -130,6 +138,11 @@ public class JeuDeDame extends JPanel {
     }
 
     private void actualiserCheminsLegaux() {
+        /*
+         * Une partie où une prise est possible doit obligatoirement en réaliser une.
+         * Cette recherche calcule d'abord toutes les prises puis conserve seulement celles
+         * ayant la longueur maximale : c'est la règle de la prise majoritaire utilisée ici.
+         */
         List<Chemin> prises = new ArrayList<>();
         for (int ligne = 0; ligne < NOMBRE_CASES; ligne++) {
             for (int colonne = 0; colonne < NOMBRE_CASES; colonne++) {
@@ -167,6 +180,8 @@ public class JeuDeDame extends JPanel {
     }
 
     private List<Chemin> calculerPrises(Piece[][] etat, int ligne, int colonne, int couleur) {
+        // La méthode explore récursivement chaque branche de prise. Une copie du plateau
+        // permet de retirer le pion capturé puis de tester les sauts suivants indépendamment.
         List<Chemin> resultats = new ArrayList<>();
         Piece piece = etat[ligne][colonne];
         for (Position destination : destinationsDePrise(etat, ligne, colonne)) {
@@ -369,6 +384,8 @@ public class JeuDeDame extends JPanel {
     }
 
     private void appliquerCoupDistant(String message) {
+        // Le traitement distant reprend exactement le même Coup codé que le clic local,
+        // mais seulement si le tour distant correspond au joueur adverse du thread Swing.
         if (partieTerminee || connexion == null || joueur == couleurLocale) {
             return;
         }
@@ -410,14 +427,14 @@ public class JeuDeDame extends JPanel {
 
     private void appliquerDeplacement(Piece[][] etat, int ligneDepart, int colonneDepart,
                                      int ligneArrivee, int colonneArrivee) {
-        Piece piece = etat[ligneDepart][colonneDepart];
-        int pasLigne = Integer.compare(ligneArrivee, ligneDepart);
-        int pasColonne = Integer.compare(colonneArrivee, colonneDepart);
-        int ligne = ligneDepart + pasLigne;
-        int colonne = colonneDepart + pasColonne;
+        Piece piece = etat[ligneDepart][colonneDepart]; // Pièce déplacée sur le plateau simulé.
+        int pasLigne = Integer.compare(ligneArrivee, ligneDepart); // Direction verticale de la dame ou du pion.
+        int pasColonne = Integer.compare(colonneArrivee, colonneDepart); // Direction horizontale du déplacement.
+        int ligne = ligneDepart + pasLigne; // Première case traversée.
+        int colonne = colonneDepart + pasColonne; // Première colonne traversée.
         while (ligne != ligneArrivee && colonne != colonneArrivee) {
             if (etat[ligne][colonne] != null) {
-                etat[ligne][colonne] = null;
+                etat[ligne][colonne] = null; // Supprime l'adversaire rencontré.
                 break;
             }
             ligne += pasLigne;
@@ -474,7 +491,7 @@ public class JeuDeDame extends JPanel {
         for (int ligne = 0; ligne < NOMBRE_CASES; ligne++) {
             for (int colonne = 0; colonne < NOMBRE_CASES; colonne++) {
                 if (original[ligne][colonne] != null) {
-                    copie[ligne][colonne] = original[ligne][colonne].copie();
+                    copie[ligne][colonne] = original[ligne][colonne].copie(); // Copie indépendante pour éviter de modifier la partie réelle.
                 }
             }
         }

@@ -1,6 +1,5 @@
 import reseau.GameConnection;
 import reseau.LobbyConnection;
-
 import javax.swing.*;
 import javax.swing.border.Border;
 import java.awt.BorderLayout;
@@ -14,8 +13,9 @@ import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-
 public final class Hub extends JFrame {
+    // Constantes visuelles : une fois centralisees, elles rendent le theme coherent
+    // sans avoir de nouvelles valeurs RGB dispersees dans toute l'interface.
     private static final Color FOND = new Color(14, 20, 31);
     private static final Color PANNEAU = new Color(24, 33, 47);
     private static final Color CARTE = new Color(31, 42, 59);
@@ -23,7 +23,6 @@ public final class Hub extends JFrame {
     private static final Color SECONDAIRE = new Color(157, 172, 190);
     private static final Color ACCENT = new Color(90, 211, 166);
     private static final Color BORDURE = new Color(53, 68, 88);
-
     private final JTextField pseudo = new JTextField("Joueur");
     private final JTextField adresseServeur = new JTextField("localhost");
     private final JTextField portServeur = new JTextField("4444");
@@ -40,9 +39,10 @@ public final class Hub extends JFrame {
     private LobbyConnection salon;
     private String adresseConnectee;
     private int portConnecte;
-
     private Hub(String adresse, int port) {
         super("Le Salon | Jeux de plateau");
+        // Les arguments recus par Hub deviennent les valeurs initiales des champs
+        // tout en laissant l'utilisateur modifier l'adresse ou le port avant connexion.
         adresseServeur.setText(adresse);
         portServeur.setText(Integer.toString(port));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -55,27 +55,28 @@ public final class Hub extends JFrame {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent event) {
+                // La fermeture de la fenetre principale doit aussi fermer la socket.
+                // Sinon, le serveur garderait un joueur deconnecte jusqu'au timeout.
                 if (salon != null) {
                     salon.close();
                 }
             }
         });
     }
-
     private JPanel creerInterface() {
+        // L'interface est decoupee en petites methodes : le choix des composants,
+        // des couleurs et des largeurs reste plus lisible que dans un constructeur unique.
         JPanel racine = new JPanel(new BorderLayout(0, 20));
         racine.setBackground(FOND);
         racine.setBorder(BorderFactory.createEmptyBorder(28, 34, 24, 34));
         racine.add(creerEntete(), BorderLayout.NORTH);
         racine.add(creerCorps(), BorderLayout.CENTER);
-
         JLabel pied = new JLabel("Un salon partagé. Des duels séparés. Votre apparence reste la vôtre.");
         pied.setForeground(SECONDAIRE);
         pied.setFont(police(Font.PLAIN, 12));
         racine.add(pied, BorderLayout.SOUTH);
         return racine;
     }
-
     private JPanel creerEntete() {
         JPanel entete = new JPanel(new BorderLayout(20, 0));
         entete.setOpaque(false);
@@ -97,7 +98,6 @@ public final class Hub extends JFrame {
         titres.add(Box.createVerticalStrut(4));
         titres.add(sousTitre);
         entete.add(titres, BorderLayout.CENTER);
-
         etatConnexion.setForeground(SECONDAIRE);
         etatConnexion.setFont(police(Font.BOLD, 12));
         etatConnexion.setHorizontalAlignment(SwingConstants.CENTER);
@@ -107,7 +107,6 @@ public final class Hub extends JFrame {
         entete.add(etatConnexion, BorderLayout.EAST);
         return entete;
     }
-
     private JPanel creerCorps() {
         JPanel corps = new JPanel(new BorderLayout(0, 16));
         corps.setOpaque(false);
@@ -119,7 +118,6 @@ public final class Hub extends JFrame {
         corps.add(contenu, BorderLayout.CENTER);
         return corps;
     }
-
     private JPanel creerConnexion() {
         JPanel carte = creerCarte();
         carte.setLayout(new BorderLayout(12, 0));
@@ -141,7 +139,6 @@ public final class Hub extends JFrame {
         carte.add(champs, BorderLayout.CENTER);
         return carte;
     }
-
     private JPanel creerListeJoueurs() {
         JPanel carte = creerCarte();
         carte.setLayout(new BorderLayout(0, 12));
@@ -156,7 +153,6 @@ public final class Hub extends JFrame {
         titre.add(enLigne, BorderLayout.NORTH);
         titre.add(aide, BorderLayout.SOUTH);
         carte.add(titre, BorderLayout.NORTH);
-
         listeJoueurs.setBackground(PANNEAU);
         listeJoueurs.setForeground(TEXTE);
         listeJoueurs.setSelectionBackground(new Color(47, 67, 83));
@@ -167,18 +163,17 @@ public final class Hub extends JFrame {
         defilement.setBorder(BorderFactory.createLineBorder(BORDURE));
         defilement.getViewport().setBackground(PANNEAU);
         carte.add(defilement, BorderLayout.CENTER);
-
         joueurSelectionne.setForeground(SECONDAIRE);
         joueurSelectionne.setFont(police(Font.PLAIN, 12));
         carte.add(joueurSelectionne, BorderLayout.SOUTH);
         return carte;
     }
-
     private JPanel creerReglages() {
+        // Les ButtonGroup garantissent qu'un seul jeu et un seul theme peuvent etre
+        // selectionnes. Les deux choix sont lus au moment de lancer ou rejoindre une partie.
         JPanel reglage = new JPanel();
         reglage.setOpaque(false);
         reglage.setLayout(new BoxLayout(reglage, BoxLayout.Y_AXIS));
-
         JPanel choixJeu = creerCarte();
         choixJeu.setLayout(new BorderLayout(0, 13));
         choixJeu.add(titreSection("01", "Choisissez votre jeu"), BorderLayout.NORTH);
@@ -189,11 +184,10 @@ public final class Hub extends JFrame {
         JPanel jeux = new JPanel(new GridLayout(1, 2, 10, 0));
         jeux.setOpaque(false);
         jeux.add(creerOption(dames, "10 × 10", "Captures en chaîne"));
-        jeux.add(creerOption(echecs, "8 × 8", "Stratégie classique"));
+        jeux.add(creerOption(echecs, "8 Ã— 8", "Stratégie classique"));
         choixJeu.add(jeux, BorderLayout.CENTER);
         reglage.add(choixJeu);
         reglage.add(Box.createVerticalStrut(14));
-
         JPanel choixSkin = creerCarte();
         choixSkin.setLayout(new BorderLayout(0, 13));
         choixSkin.add(titreSection("02", "Votre apparence"), BorderLayout.NORTH);
@@ -212,7 +206,6 @@ public final class Hub extends JFrame {
         choixSkin.add(noteSkin, BorderLayout.SOUTH);
         reglage.add(choixSkin);
         reglage.add(Box.createVerticalStrut(14));
-
         JPanel actions = creerCarte();
         actions.setLayout(new BoxLayout(actions, BoxLayout.Y_AXIS));
         joueurSelectionne.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -233,7 +226,6 @@ public final class Hub extends JFrame {
         reglage.add(Box.createVerticalGlue());
         return reglage;
     }
-
     private JPanel creerOption(JRadioButton choix, String titre, String description) {
         JPanel option = new JPanel(new BorderLayout(0, 6));
         option.setBackground(CARTE);
@@ -261,7 +253,6 @@ public final class Hub extends JFrame {
         option.setPreferredSize(new Dimension(180, 96));
         return option;
     }
-
     private JPanel creerCarte() {
         JPanel carte = new JPanel();
         carte.setBackground(PANNEAU);
@@ -270,7 +261,6 @@ public final class Hub extends JFrame {
                 BorderFactory.createEmptyBorder(17, 18, 17, 18)));
         return carte;
     }
-
     private JPanel titreSection(String numero, String titre) {
         JPanel ligne = new JPanel(new BorderLayout(9, 0));
         ligne.setOpaque(false);
@@ -284,14 +274,12 @@ public final class Hub extends JFrame {
         ligne.add(texte, BorderLayout.CENTER);
         return ligne;
     }
-
     private void ajouterEtiquette(JPanel parent, String texte) {
         JLabel etiquette = new JLabel(texte);
         etiquette.setForeground(SECONDAIRE);
         etiquette.setFont(police(Font.BOLD, 10));
         parent.add(etiquette);
     }
-
     private void styleChamp(JTextField champ) {
         champ.setForeground(TEXTE);
         champ.setBackground(new Color(17, 25, 37));
@@ -301,7 +289,6 @@ public final class Hub extends JFrame {
                 BorderFactory.createLineBorder(BORDURE),
                 BorderFactory.createEmptyBorder(8, 10, 8, 10)));
     }
-
     private void styleBoutonPrimaire(JButton bouton) {
         bouton.setForeground(new Color(13, 37, 31));
         bouton.setBackground(ACCENT);
@@ -310,7 +297,6 @@ public final class Hub extends JFrame {
         bouton.setBorder(BorderFactory.createEmptyBorder(11, 16, 11, 16));
         bouton.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
     }
-
     private void styleBoutonSecondaire(JButton bouton) {
         bouton.setForeground(TEXTE);
         bouton.setBackground(CARTE);
@@ -320,8 +306,9 @@ public final class Hub extends JFrame {
                 BorderFactory.createLineBorder(BORDURE),
                 BorderFactory.createEmptyBorder(8, 12, 8, 12)));
     }
-
     private void ajouterEcouteurs() {
+        // Le meme bouton sert de commande connecte/deconnecte : son comportement
+        // depend donc de l'existence ou non de la connexion salon.
         boutonConnexion.addActionListener(event -> {
             if (salon == null) {
                 connecterAuSalon();
@@ -333,8 +320,9 @@ public final class Hub extends JFrame {
         boutonDefi.addActionListener(event -> envoyerDefi());
         actualiserSelection();
     }
-
     private void connecterAuSalon() {
+        // Toute la validation locale est faite avant le thread reseau.
+        // Cela evite d'envoyer une demande invalide au serveur central.
         String nom = pseudo.getText().trim();
         String adresse = adresseServeur.getText().trim();
         final int port;
@@ -355,22 +343,24 @@ public final class Hub extends JFrame {
             afficherErreur("Le pseudo doit contenir 2 à 18 lettres, chiffres, tirets ou soulignés.");
             return;
         }
-
         boutonConnexion.setEnabled(false);
         boutonConnexion.setText("Connexion...");
         etatConnexion.setText("Connexion...");
+        // SwingWorker execute LobbyConnection.connect() hors du thread Swing :
+        // une attente reseau ne doit pas bloquer l'affichage des boutons.
         new SwingWorker<LobbyConnection, Void>() {
             @Override
             protected LobbyConnection doInBackground() throws Exception {
                 return LobbyConnection.connect(adresse, port, nom);
             }
-
             @Override
             protected void done() {
                 try {
                     salon = get();
                     adresseConnectee = adresse;
                     portConnecte = port;
+                    // Le thread de reception recupere les lignes reseau. Elles sont ensuite
+                    // remises sur le thread Swing avant toute modification de l'interface.
                     salon.definirEcouteur(message -> SwingUtilities.invokeLater(
                             () -> traiterMessageSalon(message)));
                     salon.envoyer("LIST");
@@ -395,8 +385,9 @@ public final class Hub extends JFrame {
             }
         }.execute();
     }
-
     private void deconnecterDuSalon() {
+        // Deconnexion locale et remise a zero de tous les champs qui n'ont plus
+        // de sens sans une session active.
         if (salon != null) {
             salon.close();
             salon = null;
@@ -410,8 +401,9 @@ public final class Hub extends JFrame {
         etatConnexion.setForeground(SECONDAIRE);
         actualiserSelection();
     }
-
     private void traiterMessageSalon(String message) {
+        // Le protocole utilise une ligne par message. Le separateur "|" permet
+        // de reconnaitre la commande, puis ses arguments eventuels.
         String[] champs = message.split("\\|", -1);
         try {
             switch (champs[0]) {
@@ -422,6 +414,8 @@ public final class Hub extends JFrame {
                     recevoirDefi(champs);
                     break;
                 case "MATCH":
+                    // MATCH contient le token, le jeu, la couleur et le pseudo adverse.
+                    // La validation de sa longueur evite les erreurs dues a un message incomplet.
                     if (champs.length == 5) {
                         rejoindrePartie(champs);
                     } else {
@@ -461,6 +455,8 @@ public final class Hub extends JFrame {
                     }
                     break;
                 case "DISCONNECTED":
+                    // La socket peut etre fermee par le serveur ou par une coupure reseau.
+                    // Dans les deux cas, l'interface revient explicitement hors ligne.
                     modeleJoueurs.clear();
                     salon = null;
                     pseudo.setEditable(true);
@@ -482,8 +478,9 @@ public final class Hub extends JFrame {
             afficherErreur("Impossible de lire la réponse du salon : " + exception.getMessage());
         }
     }
-
     private void actualiserJoueurs(String contenu) throws IOException {
+        // Cette reconstruction complete preserve la selection precedente.
+        // Elle evite qu'un rafraichissement automatique des joueurs perde la cible choisie.
         String selectionPrecedente = listeJoueurs.getSelectedValue() == null
                 ? null : listeJoueurs.getSelectedValue().pseudo;
         List<JoueurEnLigne> joueurs = new ArrayList<>();
@@ -508,7 +505,6 @@ public final class Hub extends JFrame {
         }
         actualiserSelection();
     }
-
     private void recevoirDefi(String[] champs) throws IOException {
         if (champs.length != 4) {
             throw new IOException("Invitation incomplète.");
@@ -519,10 +515,12 @@ public final class Hub extends JFrame {
                 invitant + " vous propose un duel de " + nomJeu + ".\n"
                         + "Accepter démarre la partie dans une fenêtre séparée.",
                 "Nouvelle demande de duel", JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
+        // Le meme identifiant est renvoye au serveur pour accepter ou refuser ce defi precis.
         envoyerCommande((reponse == JOptionPane.YES_OPTION ? "ACCEPT|" : "DECLINE|") + champs[1]);
     }
-
     private void rejoindrePartie(String[] champs) throws IOException {
+        // Ces champs proviennent du serveur apres ACCEPT. Le token permet de rejoindre
+        // uniquement le canal prive associe a cette partie.
         String token = champs[1];
         String jeu = champs[2];
         boolean joueurBlanc = "WHITE".equals(champs[3]);
@@ -533,13 +531,13 @@ public final class Hub extends JFrame {
         }
         boolean skinLocal = noel.isSelected();
         etatConnexion.setText("Préparation du duel contre " + adversaire + "…");
+        // La connexion reste hors du thread Swing afin de ne pas geler l'interface.
         new SwingWorker<GameConnection, Void>() {
             @Override
             protected GameConnection doInBackground() throws Exception {
                 return GameConnection.joinHub(adresseConnectee, portConnecte, token,
                         jeu, skinLocal, joueurBlanc);
             }
-
             @Override
             protected void done() {
                 try {
@@ -554,7 +552,6 @@ public final class Hub extends JFrame {
             }
         }.execute();
     }
-
     private void envoyerDefi() {
         JoueurEnLigne cible = listeJoueurs.getSelectedValue();
         if (salon == null) {
@@ -566,18 +563,19 @@ public final class Hub extends JFrame {
             return;
         }
         String jeu = echecs.isSelected() ? "chess" : "checkers";
+        // L'encodage transporte le pseudo comme un champ unique sans le separateur "|".
         envoyerCommande("CHALLENGE|" + LobbyConnection.encoder(cible.pseudo) + "|" + jeu);
     }
-
     private void lancerPartieLocale() {
+        // Cette partie utilise les moteurs locaux : aucune socket ni aucun serveur de partie.
         boolean modeNoel = noel.isSelected();
         String jeu = echecs.isSelected() ? "chess" : "checkers";
         setVisible(false);
         ouvrirJeu(jeu, modeNoel, null, true);
     }
-
     private void ouvrirJeu(String jeu, boolean modeNoel,
                            GameConnection connexion, boolean joueurBlanc) {
+        // Ce rappel reveille seulement le salon quand sa fenetre de partie est fermee.
         Runnable retourAuHub = () -> {
             setVisible(true);
             toFront();
@@ -588,7 +586,6 @@ public final class Hub extends JFrame {
             new jeuDeDame.Main(modeNoel, retourAuHub, connexion, joueurBlanc);
         }
     }
-
     private void envoyerCommande(String commande) {
         if (salon == null) {
             afficherErreur("Vous n’êtes plus connecté au salon.");
@@ -600,8 +597,8 @@ public final class Hub extends JFrame {
             afficherErreur(exception.getMessage());
         }
     }
-
     private void actualiserSelection() {
+        // Le bouton reste actif seulement si une cible disponible est selectionnee.
         JoueurEnLigne joueur = listeJoueurs.getSelectedValue();
         boolean connecte = salon != null;
         boolean disponible = joueur != null && !joueur.occupe;
@@ -618,17 +615,15 @@ public final class Hub extends JFrame {
             joueurSelectionne.setForeground(ACCENT);
         }
     }
-
     private void afficherErreur(String message) {
         JOptionPane.showMessageDialog(this, message, "Salon des jeux", JOptionPane.ERROR_MESSAGE);
     }
-
     private static Font police(int style, int taille) {
         return new Font(Font.SANS_SERIF, style, taille);
     }
-
     public static void main(String[] args) {
         if (args.length > 0 && "server".equalsIgnoreCase(args[0])) {
+            // Mode pratique : java Hub server [port] demarre directement le Serveur.
             Serveur.main(args.length > 1 ? new String[]{args[1]} : new String[0]);
         } else {
             String adresse = args.length > 1 ? args[1] : "localhost";
@@ -644,7 +639,6 @@ public final class Hub extends JFrame {
             demarrerReseau(adresse, Integer.toString(port));
         }
     }
-
     static void demarrerReseau(String adresse, String port) {
         final int portValeur;
         try {
@@ -658,29 +652,25 @@ public final class Hub extends JFrame {
         }
         SwingUtilities.invokeLater(() -> new Hub(adresse, portValeur).setVisible(true));
     }
-
     private static final class JoueurEnLigne {
         private final String pseudo;
         private final boolean occupe;
-
         private JoueurEnLigne(String pseudo, boolean occupe) {
             this.pseudo = pseudo;
             this.occupe = occupe;
         }
-
         @Override
         public String toString() {
             return pseudo;
         }
     }
-
     private static final class RenduJoueur extends DefaultListCellRenderer {
         @Override
         public Component getListCellRendererComponent(JList<?> liste, Object valeur, int index,
                                                       boolean selectionne, boolean focus) {
             super.getListCellRendererComponent(liste, valeur, index, selectionne, focus);
             JoueurEnLigne joueur = (JoueurEnLigne) valeur;
-            setText("●  " + joueur.pseudo
+            setText("â—  " + joueur.pseudo
                     + (joueur.occupe ? "     Occupé" : "     Disponible"));
             setForeground(joueur.occupe ? SECONDAIRE : ACCENT);
             setFont(police(Font.BOLD, 13));

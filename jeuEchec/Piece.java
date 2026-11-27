@@ -1,5 +1,12 @@
 package jeuEchec;
 
+/**
+ * Modélise une pièce d'échecs sans connaître le plateau.
+ *
+ * La couleur est immuable, le type peut changer lors d'une promotion et
+ * aBouge sert notamment à autoriser le roque. Une copie indépendante est utilisée
+ * dans les simulations : l'algorithme peut tester un coup sans modifier la vraie pièce.
+ */
 public final class Piece {
     public enum Couleur {
         BLANC, NOIR;
@@ -38,7 +45,7 @@ public final class Piece {
     }
 
     void marquerCommeDeplacee() {
-        aBouge = true;
+        aBouge = true; // Désactive ensuite les déplacements initiaux réservés à une pièce immobile.
     }
 
     void promouvoir(Type nouveauType) {
@@ -51,9 +58,9 @@ public final class Piece {
     }
 
     Piece copie() {
-        Piece copie = new Piece(couleur, type);
-        copie.aBouge = aBouge;
-        return copie;
+        Piece copie = new Piece(couleur, type); // Conserve l'identité de couleur et de type.
+        copie.aBouge = aBouge; // Conserve aussi l'historique nécessaire aux simulations.
+        return copie; // Objet distinct : les modifications ultérieures restent locales.
     }
 
     public String symbole() {

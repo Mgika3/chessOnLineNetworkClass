@@ -17,6 +17,14 @@ import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.Timer;
 
+/**
+ * Variante simplifiée du rendu pseudo-3D du dossier doom.
+ *
+ * Elle reprend les notions de rayon, de distance de mur et de carte 16x16, mais
+ * allège certaines techniques visuelles comme les tables de couleurs détaillées.
+ * La logique doit donc être lue comme une version parallèle plutôt que comme une
+ * dépendance obligatoire du premier GamePanel.
+ */
 public class GamePanel2 extends JPanel {
     private static final int[][] MAP = {
         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
@@ -120,7 +128,7 @@ public class GamePanel2 extends JPanel {
     }
 
     private void updateGame() {
-        long now = System.nanoTime();
+        long now = System.nanoTime(); // Mesure courante utilisée pour calculer le temps écoulé.
         double delta = Math.min((now - previousFrameTime) / 1_000_000_000.0, 0.05);
         previousFrameTime = now;
 

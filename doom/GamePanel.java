@@ -10,6 +10,15 @@ import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.Timer;
 
+/**
+ * Démo graphique pseudo-3D inspirée des moteurs raycasting.
+ *
+ * Chaque colonne verticale de l'écran correspond à un rayon lancé depuis le joueur.
+ * Le rayon avance jusqu'au premier mur, sa distance détermine la hauteur du segment
+ * affiché et sa coordonnée d'impact permet de dessiner une texture approximative.
+ * Le simulateur utilise un accumulateur fixe à 60 Hz pour éviter les accélérations
+ * lors d'un ralentissement ponctuel de l'affichage Swing.
+ */
 public class GamePanel extends JPanel {
     private static final int[][] MAP = {
         {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
@@ -157,6 +166,11 @@ public class GamePanel extends JPanel {
     }
 
     private void updateGame() {
+        /*
+         * Le temps réel est borné à 50 ms puis ajouté à un accumulateur. Chaque pas fixe
+         * avance exactement d'une fraction de seconde identique. Cela évite de rendre
+         * le joueur plus rapide sur un ordinateur au taux de rafraîchissement élevé.
+         */
         long now = System.nanoTime();
         long elapsed = Math.min(now - previousFrameTime, 50_000_000L);
         previousFrameTime = now;
@@ -191,10 +205,10 @@ public class GamePanel extends JPanel {
     }
 
     private boolean isWalkable(double x, double y) {
-        int left = (int) Math.floor(x - PLAYER_RADIUS);
-        int right = (int) Math.floor(x + PLAYER_RADIUS);
-        int top = (int) Math.floor(y - PLAYER_RADIUS);
-        int bottom = (int) Math.floor(y + PLAYER_RADIUS);
+        int left = (int) Math.floor(x - PLAYER_RADIUS); // Bord gauche de la boîte circulaire.
+        int right = (int) Math.floor(x + PLAYER_RADIUS); // Bord droit de la boîte circulaire.
+        int top = (int) Math.floor(y - PLAYER_RADIUS); // Bord supérieur de la boîte circulaire.
+        int bottom = (int) Math.floor(y + PLAYER_RADIUS); // Bord inférieur de la boîte circulaire.
         return isFloor(left, top) && isFloor(right, top)
                 && isFloor(left, bottom) && isFloor(right, bottom);
     }
@@ -215,6 +229,8 @@ public class GamePanel extends JPanel {
     }
 
     private void drawWorld(Graphics2D g) {
+        // Une colonne écran = un rayon du champ de vision. Le résultat devient une
+        // tranche verticale dont la hauteur décroît avec la distance du mur.
         int width = getWidth();
         int height = getHeight();
         int horizon = height / 2;
@@ -286,6 +302,11 @@ public class GamePanel extends JPanel {
     }
 
     private RayHit castRay(double rayX, double rayY) {
+        /*
+         * DDA ("Digital Differential Analyzer") avance case par case sur la grille.
+         * sideX et sideY indiquent la distance au prochain mur vertical ou horizontal;
+         * la plus petite valeur est retenue jusqu'à rencontrer une case non nulle.
+         */
         int mapX = (int) player.x;
         int mapY = (int) player.y;
         double deltaX = rayX == 0 ? Double.POSITIVE_INFINITY : Math.abs(1.0 / rayX);

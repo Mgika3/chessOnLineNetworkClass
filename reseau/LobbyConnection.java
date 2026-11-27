@@ -7,6 +7,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.function.Consumer;
 
+/**
+ * Représente une session persistante entre un client graphique et le serveur de salon.
+ *
+ * L'objet tient la socket TCP, les flux texte et un écouteur dans lequel chaque
+ * message reçu est transmis. Le protocole est volontairement simple : une commande
+ * par ligne, avec un préfixe indiquant son type. Les valeurs humaines sont encodées
+ * en Base64 URL afin qu'elles puissent contenir des caractères sans casser le
+ * séparateur vertical "|" du protocole.
+ */
 public final class LobbyConnection implements AutoCloseable {
     private final Socket socket;
     private final BufferedReader input;
@@ -17,15 +26,17 @@ public final class LobbyConnection implements AutoCloseable {
         this.socket = socket;
         this.input = input;
         this.output = output;
-        Thread reader = new Thread(this::lireMessages, "reception-salon");
-        reader.setDaemon(true);
-        reader.start();
+        // Le thread est daemon afin qu'il n'empêche jamais la JVM de s'arrêter.
+        // Il ne gère pas l'état de l'interface : il délègue les lignes reçues au Consumer.
+        Thread reader = new Thread(this::lireMessages, "reception-salon"); // Thread chargé d'attendre les lignes réseau.
+        reader.setDaemon(true); // Ne bloque pas l'arrêt de la JVM.
+        reader.start(); // Lance la réception en arrière-plan.
     }
 
     public static LobbyConnection connect(String address, int port, String nickname) throws IOException {
-        Socket socket = new Socket();
+        Socket socket = new Socket(); // Socket créée puis configurée pour pouvoir être fermée sur erreur.
         try {
-            socket.connect(new InetSocketAddress(address, port), 5000);
+            socket.connect(new InetSocketAddress(address, port), 5000); // Timeout de connexion de cinq secondes.
             BufferedReader input = new BufferedReader(new InputStreamReader(
                     socket.getInputStream(), StandardCharsets.UTF_8));
             PrintWriter output = new PrintWriter(new OutputStreamWriter(
@@ -53,7 +64,7 @@ public final class LobbyConnection implements AutoCloseable {
     }
 
     public synchronized void envoyer(String commande) throws IOException {
-        if (socket.isClosed() || !socket.isConnected()) {
+        if (socket.isClosed() || !socket.isConnected()) { // Évite d'écrire sur une connexion inexistante.
             throw new IOException("La connexion au salon est fermée.");
         }
         output.println(commande);
@@ -70,7 +81,7 @@ public final class LobbyConnection implements AutoCloseable {
         try {
             String message;
             while ((message = input.readLine()) != null) {
-                listener.accept(message);
+                listener.accept(message); // Diffuse chaque ligne reçue à l'interface.
             }
             if (!socket.isClosed()) {
                 listener.accept("DISCONNECTED|Le serveur a fermé la connexion.");
@@ -84,6 +95,7 @@ public final class LobbyConnection implements AutoCloseable {
     }
 
     public static String encoder(String valeur) {
+        // URL-safe sans "=" rend la valeur sûre dans les champs séparés par "|".
         return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(valeur.getBytes(StandardCharsets.UTF_8));
     }

@@ -6,6 +6,10 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import reseau.GameConnection;
 
+/**
+ * Fenêtre Swing contenant le moteur de rendu du jeu Doom.
+ * Elle coordonne la fermeture du panneau, la connexion réseau et le retour au salon.
+ */
 public class Main extends JFrame {
     private final GamePanel jeu;
 
@@ -19,10 +23,10 @@ public class Main extends JFrame {
 
     public Main(boolean modeNoel, Runnable retourAuHub,
                 GameConnection connexion, boolean joueurBlanc) {
-        super("Raycast // Secteur 09");
-        jeu = new GamePanel(modeNoel);
-        setContentPane(jeu);
-        pack();
+        super("Raycast // Secteur 09"); // Titre thématique de la fenêtre.
+        jeu = new GamePanel(modeNoel); // Crée le panneau pseudo-3D.
+        setContentPane(jeu); // Utilise ce panneau comme vue principale.
+        pack(); // Applique la taille préférée du panneau.
         setMinimumSize(new java.awt.Dimension(760, 520));
         setDefaultCloseOperation(retourAuHub == null ? JFrame.EXIT_ON_CLOSE : JFrame.DISPOSE_ON_CLOSE);
         addWindowListener(new WindowAdapter() {

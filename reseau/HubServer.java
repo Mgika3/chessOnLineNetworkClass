@@ -8,6 +8,15 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
+/**
+ * Serveur central du salon et de ses duels.
+ *
+ * Il tient les trois collections principales : les joueurs actuellement connectés,
+ * les défis proposés et les parties acceptées. Une section synchronized protège
+ * ces structures contre les opérations concurrentes effectuées par les threads
+ * d'écoute. Quand un défi est accepté, un jeton aléatoire devient le nom du canal
+ * privé de partie : il évite qu'un joueur ne rejoigne une partie au hasard.
+ */
 public final class HubServer implements AutoCloseable {
     private final int port;
     private final Object verrou = new Object();
@@ -25,14 +34,19 @@ public final class HubServer implements AutoCloseable {
     }
 
     public void demarrer() throws IOException {
-        serveur = new ServerSocket(port);
-        System.out.println("Serveur de salon en écoute sur le port " + port + ".");
+        serveur = new ServerSocket(port); // Ouvre le port TCP demandé.
+        System.out.println("Serveur de salon en écoute sur le port " + port + "."); // Indique que le serveur est prêt.
+        /*
+         * La boucle accepte uniquement de nouvelles sockets. Toute lecture et tout
+         * protocole joueur sont ensuite déplacés dans un thread daemon distinct,
+         * pour que plusieurs clients puissent attendre leurs commandes sans bloquer l'accueil.
+         */
         while (actif) {
             try {
-                Socket socket = serveur.accept();
-                Thread worker = new Thread(() -> traiterConnexion(socket), "client-salon");
-                worker.setDaemon(true);
-                worker.start();
+                Socket socket = serveur.accept(); // Bloque jusqu'à l'arrivée d'un nouveau client.
+                Thread worker = new Thread(() -> traiterConnexion(socket), "client-salon"); // Isole cette connexion des suivantes.
+                worker.setDaemon(true); // Empêche ce thread d'être le seul à maintenir l'application ouverte.
+                worker.start(); // Commence à lire le premier message du client.
             } catch (IOException exception) {
                 if (actif) {
                     throw exception;
@@ -44,17 +58,17 @@ public final class HubServer implements AutoCloseable {
     private void traiterConnexion(Socket socket) {
         try {
             BufferedReader input = new BufferedReader(new InputStreamReader(
-                    socket.getInputStream(), StandardCharsets.UTF_8));
+                    socket.getInputStream(), StandardCharsets.UTF_8)); // Lit les commandes texte en UTF-8.
             PrintWriter output = new PrintWriter(new OutputStreamWriter(
-                    socket.getOutputStream(), StandardCharsets.UTF_8), true);
-            String premiereLigne = input.readLine();
+                    socket.getOutputStream(), StandardCharsets.UTF_8), true); // autoFlush envoie immédiatement chaque réponse.
+            String premiereLigne = input.readLine(); // La première ligne choisit le mode inscription ou partie.
             if (premiereLigne == null) {
                 socket.close();
                 return;
             }
-            if (premiereLigne.startsWith("REGISTER|")) {
+            if (premiereLigne.startsWith("REGISTER|")) { // Connexion à la liste des joueurs.
                 traiterJoueur(socket, input, output, premiereLigne);
-            } else if (premiereLigne.startsWith("JOIN|")) {
+            } else if (premiereLigne.startsWith("JOIN|")) { // Connexion directe à un canal de partie existant.
                 traiterCanalDePartie(socket, input, output, premiereLigne);
             } else {
                 envoyer(output, "ERROR|" + encoder("Commande de connexion inconnue."));
@@ -72,9 +86,9 @@ public final class HubServer implements AutoCloseable {
         Joueur joueur;
         String pseudo;
         try {
-            String[] champs = inscription.split("\\|", -1);
-            pseudo = champs.length == 2 ? decoder(champs[1]).trim() : "";
-            if (!pseudo.matches("[\\p{L}\\p{N}_-]{2,18}")) {
+            String[] champs = inscription.split("\\|", -1); // -1 conserve les champs vides éventuels.
+            pseudo = champs.length == 2 ? decoder(champs[1]).trim() : ""; // Décode le pseudo après Base64.
+            if (!pseudo.matches("[\\p{L}\\p{N}_-]{2,18}")) { // Limite la longueur et les caractères autorisés.
                 throw new IllegalArgumentException(
                         "Le pseudo doit contenir 2 à 18 lettres, chiffres, tirets ou soulignés.");
             }
@@ -84,23 +98,25 @@ public final class HubServer implements AutoCloseable {
             return;
         }
 
-        String cle = pseudo.toLowerCase(Locale.ROOT);
-        joueur = new Joueur(pseudo, cle, socket, output);
+        String cle = pseudo.toLowerCase(Locale.ROOT); // Rend l'identification insensible aux majuscules.
+        joueur = new Joueur(pseudo, cle, socket, output); // Regroupe les données propres à cette session.
+        // Le verrou transforme l'inscription en opération atomique : la même clé
+        // ne peut être créée deux fois, et toutes les listes sont diffusées ensemble.
         synchronized (verrou) {
-            if (joueurs.containsKey(cle)) {
+            if (joueurs.containsKey(cle)) { // Détecte un pseudo déjà inscrit, quelle que soit sa casse.
                 envoyer(output, "ERROR|" + encoder("Ce pseudo est déjà utilisé."));
                 socket.close();
                 return;
             }
-            joueurs.put(cle, joueur);
-            envoyer(output, "WELCOME|" + encoder(pseudo));
-            actualiserListes();
+            joueurs.put(cle, joueur); // Rend le nouveau joueur visible globalement.
+            envoyer(output, "WELCOME|" + encoder(pseudo)); // Confirme l'inscription au client.
+            actualiserListes(); // Rafraîchit tous les joueurs après ce changement.
         }
 
         try {
             String commande;
-            while ((commande = input.readLine()) != null) {
-                traiterCommande(joueur, commande);
+            while ((commande = input.readLine()) != null) { // Attend une nouvelle commande du même joueur.
+                traiterCommande(joueur, commande); // Traduit la commande avec le verrou global.
             }
         } finally {
             deconnecter(joueur);
@@ -108,8 +124,8 @@ public final class HubServer implements AutoCloseable {
     }
 
     private void traiterCommande(Joueur joueur, String commande) {
-        String[] champs = commande.split("\\|", -1);
-        synchronized (verrou) {
+        String[] champs = commande.split("\\|", -1); // Sépare sans perdre les paramètres présents.
+        synchronized (verrou) { // Toutes les modifications d'état passent sous le même verrou.
             if (joueurs.get(joueur.cle) != joueur) {
                 return;
             }
@@ -167,11 +183,11 @@ public final class HubServer implements AutoCloseable {
             return;
         }
 
-        String id = UUID.randomUUID().toString();
-        Defi defi = new Defi(id, expediteur, cible, jeu);
-        expediteur.defi = id;
-        cible.defi = id;
-        defis.put(id, defi);
+        String id = UUID.randomUUID().toString(); // Identifiant unique impossible à deviner simplement.
+        Defi defi = new Defi(id, expediteur, cible, jeu); // Création de l'objet défi atomique.
+        expediteur.defi = id; // Marque l'expéditeur comme engagé.
+        cible.defi = id; // Marque aussi la cible comme engagée.
+        defis.put(id, defi); // Rend le défi accessible pour ACCEPT ou DECLINE.
         expediteur.envoyer("CHALLENGE_SENT|" + id + "|" + encoder(cible.pseudo));
         cible.envoyer("CHALLENGE|" + id + "|" + encoder(expediteur.pseudo) + "|" + jeu);
         actualiserListes();
@@ -190,16 +206,18 @@ public final class HubServer implements AutoCloseable {
             return;
         }
 
-        String token = UUID.randomUUID().toString();
-        Partie partie = new Partie(token, defi);
+        String token = UUID.randomUUID().toString(); // Jeton privé du canal de partie.
+        Partie partie = new Partie(token, defi); // Initialise les deux emplacements de socket.
+        // Un UUID empêche qu'un ancien client devine facilement l'identifiant
+        // d'une partie encore vivante. Les deux joueurs y accèdent via ce canal privé.
         parties.put(token, partie);
         defi.expediteur.partie = partie;
         destinataire.partie = partie;
         defis.remove(id);
         libererDefi(defi);
-        defi.expediteur.envoyer("MATCH|" + token + "|" + defi.jeu + "|WHITE|"
+        defi.expediteur.envoyer("MATCH|" + token + "|" + defi.jeu + "|WHITE|" // L'expéditeur devient Blanc.
                 + encoder(destinataire.pseudo));
-        destinataire.envoyer("MATCH|" + token + "|" + defi.jeu + "|BLACK|"
+        destinataire.envoyer("MATCH|" + token + "|" + defi.jeu + "|BLACK|" // La cible devient Noir.
                 + encoder(defi.expediteur.pseudo));
         actualiserListes();
     }
@@ -221,7 +239,7 @@ public final class HubServer implements AutoCloseable {
         String[] champs = inscription.split("\\|", -1);
         Partie partie;
         synchronized (verrou) {
-            partie = champs.length == 2 ? parties.get(champs[1]) : null;
+            partie = champs.length == 2 ? parties.get(champs[1]) : null; // Recherche la partie uniquement via son token.
         }
         if (partie == null || !partie.ajouter(socket, output)) {
             envoyer(output, "ERROR|" + encoder("Cette partie n’est plus disponible."));
@@ -233,6 +251,8 @@ public final class HubServer implements AutoCloseable {
         synchronized (partie) {
             deuxJoueursConnectes = partie.sockets[0] != null && partie.sockets[1] != null;
             if (deuxJoueursConnectes && !partie.demarrageEnvoye) {
+                // CountDownLatch évite une course : les deux clients ne passent READY
+                // qu'après avoir tous les deux enregistré leur socket dans Partie.
                 partie.demarrageEnvoye = true;
                 partie.envoyer(0, "READY|");
                 partie.envoyer(1, "READY|");
@@ -247,7 +267,7 @@ public final class HubServer implements AutoCloseable {
             String ligne;
             while ((ligne = input.readLine()) != null) {
                 if (ligne.startsWith("MOVE|")) {
-                    partie.retransmettre(socket, ligne);
+                    partie.retransmettre(socket, ligne); // Seul le protocole MOVE est retransmis à l'adversaire.
                 }
             }
         } catch (InterruptedException exception) {
@@ -259,6 +279,8 @@ public final class HubServer implements AutoCloseable {
 
     private void terminerPartie(Partie partie, Socket socketDeconnecte) {
         synchronized (verrou) {
+            // AtomicBoolean fait office de garde indépendant du serveur principal :
+            // plusieurs déconnexions concurrentes ne peuvent terminer la même partie qu'une fois.
             if (!partie.terminee.compareAndSet(false, true)) {
                 return;
             }
@@ -332,8 +354,8 @@ public final class HubServer implements AutoCloseable {
 
     private static void envoyer(PrintWriter output, String ligne) {
         synchronized (output) {
-            output.println(ligne);
-            output.flush();
+            output.println(ligne); // Ajoute aussi automatiquement le saut de ligne du protocole.
+            output.flush(); // Force l'envoi même si PrintWriter est configuré sans autoFlush ici.
         }
     }
 
@@ -405,11 +427,11 @@ public final class HubServer implements AutoCloseable {
 
         private synchronized boolean ajouter(Socket socket, PrintWriter output) {
             if (sockets[0] == null) {
-                sockets[0] = socket;
-                sorties[0] = output;
+                sockets[0] = socket; // Première place réservée au premier joueur.
+                sorties[0] = output; // Conserve le flux associé à cette même place.
             } else if (sockets[1] == null) {
-                sockets[1] = socket;
-                sorties[1] = output;
+                sockets[1] = socket; // Deuxième place réservée au joueur adverse.
+                sorties[1] = output; // Conserve le flux associé au deuxième joueur.
             } else {
                 return false;
             }
@@ -423,7 +445,7 @@ public final class HubServer implements AutoCloseable {
         }
 
         private synchronized void retransmettre(Socket source, String ligne) {
-            int destinataire = sockets[0] == source ? 1 : 0;
+            int destinataire = sockets[0] == source ? 1 : 0; // L'expéditeur est exclu : le coup va vers l'autre.
             if (sorties[destinataire] != null) {
                 HubServer.envoyer(sorties[destinataire], ligne);
             }

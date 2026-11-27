@@ -1,5 +1,12 @@
 package jeuDeDame;
 
+/**
+ * Modèle minimal d'un pion de dames.
+ *
+ * Une pièce possède une couleur immuable et un état supplémentaire appelé dame.
+ * Le drapeau dame change ses déplacements futurs, mais pas sa couleur ni son identité.
+ * Les simulations utilisent copie() pour conserver l'immuabilité de l'état testé.
+ */
 public final class Piece {
     public static final int BLANC = 1;
     public static final int NOIR = 2;
@@ -28,10 +35,10 @@ public final class Piece {
     }
 
     public void promouvoir() {
-        dame = true;
+        dame = true; // Transforme un pion ordinaire en dame.
     }
 
     Piece copie() {
-        return new Piece(couleur, dame);
+        return new Piece(couleur, dame); // Conserve couleur et état sans partager l'objet.
     }
 }
